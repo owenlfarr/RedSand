@@ -1,0 +1,130 @@
+MAIN MENU SETUP INSTRUCTIONS
+=============================
+
+✅ WHAT'S DONE:
+- SimpleMenuController script created
+- Script added to GameUICanvas
+- MainMenuPanel and HowToPlayPanel created
+- BlackOverlay created for fade effect
+- Old UI elements hidden
+
+📝 MANUAL SETUP NEEDED:
+
+PART 1: MAIN MENU PANEL
+------------------------
+1. Select "MainMenuPanel" in hierarchy
+2. Add UI elements as children:
+
+   TITLE TEXT:
+   - Right-click MainMenuPanel → UI → Text - TextMeshPro
+   - Name it "TitleText"
+   - Set Text: "NIGHT SURVIVAL"
+   - Set Font Size: 72
+   - Set Alignment: Center
+   - Position: Top center of screen
+
+   START BUTTON:
+   - Right-click MainMenuPanel → UI → Button - TextMeshPro
+   - Name it "StartButton"
+   - Edit Text child: "START GAME"
+   - Position: Center of screen
+   - In Button component → OnClick():
+     * Click +
+     * Drag GameUICanvas to Object field
+     * Select SimpleMenuController → StartGame
+
+   HOW TO PLAY BUTTON:
+   - Right-click MainMenuPanel → UI → Button - TextMeshPro
+   - Name it "HowToPlayButton"
+   - Edit Text child: "HOW TO PLAY"
+   - Position: Below Start Button
+   - In Button component → OnClick():
+     * Click +
+     * Drag GameUICanvas to Object field
+     * Select SimpleMenuController → ShowHowToPlay
+
+   QUIT BUTTON:
+   - Right-click MainMenuPanel → UI → Button - TextMeshPro
+   - Name it "QuitButton"
+   - Edit Text child: "QUIT"
+   - Position: Below How To Play Button
+   - In Button component → OnClick():
+     * Click +
+     * Drag GameUICanvas to Object field
+     * Select SimpleMenuController → QuitGame
+
+PART 2: HOW TO PLAY PANEL
+--------------------------
+1. Select "HowToPlayPanel" in hierarchy
+2. Make sure it's INACTIVE (checkbox unchecked in inspector)
+3. Add UI elements as children:
+
+   TITLE:
+   - Right-click HowToPlayPanel → UI → Text - TextMeshPro
+   - Name it "Title"
+   - Set Text: "HOW TO PLAY"
+   - Set Font Size: 48
+   - Position: Top center
+
+   INSTRUCTIONS TEXT:
+   - Right-click HowToPlayPanel → UI → Text - TextMeshPro
+   - Name it "InstructionsText"
+   - Set Text:
+     "CONTROLS:
+     WASD - Move
+     Mouse - Look Around
+     SPACE - Jump
+     E - Interact
+     TAB - Radar
+     ESC - Pause
+
+     OBJECTIVE:
+     Survive the night by defending your base
+     Manage oxygen when outside the bunker
+     Repair systems during solar flares
+     Hide in lockers when threatened
+     
+     Press ESC to return to menu"
+   
+   - Set Font Size: 20
+   - Set Alignment: Top Left
+   - Enable Word Wrapping
+   - Position: Center of screen
+
+   BACK BUTTON:
+   - Right-click HowToPlayPanel → UI → Button - TextMeshPro
+   - Name it "BackButton"
+   - Edit Text child: "BACK"
+   - Position: Bottom center
+   - In Button component → OnClick():
+     * Click +
+     * Drag GameUICanvas to Object field
+     * Select SimpleMenuController → ShowMainMenu
+
+PART 3: STYLING (Optional but Recommended)
+-------------------------------------------
+For all buttons:
+- Set Button → Colors:
+  * Normal Color: Gray (0.2, 0.2, 0.2, 0.8)
+  * Highlighted Color: Lighter Gray (0.3, 0.3, 0.3, 1)
+  * Pressed Color: Dark Gray (0.1, 0.1, 0.1, 1)
+
+For Quit button specifically:
+- Set Normal Color to reddish: (0.5, 0.2, 0.2, 0.8)
+
+QUICK TIP:
+----------
+- Use Anchors to position UI elements properly
+- Use RectTransform for precise sizing
+- Test in Game view to see how it looks
+
+TESTING:
+--------
+1. Press Play
+2. Main menu should show
+3. Click "How To Play" → should show instructions
+4. Press ESC or click "Back" → return to main menu
+5. Click "Start Game" → should fade and load MultiplayerLobby
+6. Click "Quit" → should exit (or stop play mode in editor)
+
+✅ Your UI will stay exactly as you configure it - no more automatic resizing!

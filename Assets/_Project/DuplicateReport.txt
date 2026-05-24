@@ -1,0 +1,115 @@
+Duplicate/Near-Duplicate Asset Report
+Generated: 2026-05-24T16:35:16
+
+
+[5x] new material, .mat
+ - C:\Unity\RedSand\Assets\Materials\New Material 1.mat
+ - C:\Unity\RedSand\Assets\Materials\New Material 2.mat
+ - C:\Unity\RedSand\Assets\Materials\New Material 3.mat
+ - C:\Unity\RedSand\Assets\Materials\New Material 4.mat
+ - C:\Unity\RedSand\Assets\Materials\New Material.mat
+
+[3x] anyconv.com__model, .fbx
+ - C:\Unity\RedSand\Assets\Art\Models\AnyConv.com__model (1).fbx
+ - C:\Unity\RedSand\Assets\Art\Models\AnyConv.com__model (2).fbx
+ - C:\Unity\RedSand\Assets\Scenes\AnyConv.com__model.fbx
+
+[2x] w, .jpeg
+ - C:\Unity\RedSand\Assets\Art\Textures\w (1).jpeg
+ - C:\Unity\RedSand\Assets\Art\Textures\w (2).jpeg
+
+[2x] thing_low_default_specularsmoothness, .png
+ - C:\Unity\RedSand\Assets\Scenes\thing_low_Default_SpecularSmoothness.png
+ - C:\Unity\RedSand\Assets\Art\Textures\thing_low_Default_SpecularSmoothness.png
+
+[2x] thing_low_default_normal, .png
+ - C:\Unity\RedSand\Assets\Scenes\thing_low_Default_Normal.png
+ - C:\Unity\RedSand\Assets\Art\Textures\thing_low_Default_Normal.png
+
+[2x] details_roughness, .jpg
+ - C:\Unity\RedSand\Assets\Scenes\Details_roughness.jpg
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_roughness.jpg
+
+[2x] new project, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\New Project (1).png
+ - C:\Unity\RedSand\Assets\Art\Textures\New Project.png
+
+[2x] thing_low_default_albedotransparency, .png
+ - C:\Unity\RedSand\Assets\Scenes\thing_low_Default_AlbedoTransparency.png
+ - C:\Unity\RedSand\Assets\Art\Textures\thing_low_Default_AlbedoTransparency.png
+
+[2x] lightingdata, .asset
+ - C:\Unity\RedSand\Assets\ThirdParty\_Barking_Dog\3D Free Modular Kit\Test_Map\LightingData.asset
+ - C:\Unity\RedSand\Assets\Scenes\SampleScene\LightingData.asset
+
+[2x] new lighting settings, .lighting
+ - C:\Unity\RedSand\Assets\Settings\New Lighting Settings 1.lighting
+ - C:\Unity\RedSand\Assets\Settings\New Lighting Settings.lighting
+
+[2x] textmeshpro - prefab, .prefab
+ - C:\Unity\RedSand\Assets\ThirdParty\TextMesh Pro\Examples & Extras\Prefabs\TextMeshPro - Prefab 1.prefab
+ - C:\Unity\RedSand\Assets\ThirdParty\TextMesh Pro\Examples & Extras\Prefabs\TextMeshPro - Prefab 2.prefab
+
+[2x] details_albedo, .mat
+ - C:\Unity\RedSand\Assets\Scenes\Materials\Details_albedo.mat
+ - C:\Unity\RedSand\Assets\Materials\Details_albedo.mat
+
+[2x] neon_01, .mat
+ - C:\Unity\RedSand\Assets\ThirdParty\_Barking_Dog\3D Free Modular Kit\_Meshes\Materials\Neon_01.mat
+ - C:\Unity\RedSand\Assets\Materials\Neon_01.mat
+
+[2x] w, .mat
+ - C:\Unity\RedSand\Assets\Materials\w (1).mat
+ - C:\Unity\RedSand\Assets\Materials\w (2).mat
+
+[2x] antene_roughness, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Roughness 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Roughness.png
+
+[2x] build_base_color, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Base_Color 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Base_Color.png
+
+[2x] build_metallic, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Metallic 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Metallic.png
+
+[2x] antene_base_color, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Base_Color 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Base_Color.png
+
+[2x] antene_metallic, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Metallic 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Metallic.png
+
+[2x] antene_normal_opengl, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Normal_OpenGL 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\antene_Normal_OpenGL.png
+
+[2x] build_normal_opengl, .png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Normal_OpenGL 1.png
+ - C:\Unity\RedSand\Assets\Art\Textures\build_Normal_OpenGL.png
+
+[2x] details_emissive, .jpg
+ - C:\Unity\RedSand\Assets\Scenes\Details_emissive.jpg
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_emissive.jpg
+
+[2x] details_metallic, .jpg
+ - C:\Unity\RedSand\Assets\Scenes\Details_metallic.jpg
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_metallic.jpg
+
+[2x] details_normal, .png
+ - C:\Unity\RedSand\Assets\Scenes\Details_normal.png
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_normal.png
+
+[2x] default_mixed_ao, .png
+ - C:\Unity\RedSand\Assets\Scenes\Default_Mixed_AO.png
+ - C:\Unity\RedSand\Assets\Art\Textures\Default_Mixed_AO.png
+
+[2x] details_albedo, .jpg
+ - C:\Unity\RedSand\Assets\Scenes\Details_albedo.jpg
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_albedo.jpg
+
+[2x] details_ao, .jpg
+ - C:\Unity\RedSand\Assets\Scenes\Details_AO.jpg
+ - C:\Unity\RedSand\Assets\Art\Textures\Details_AO.jpg

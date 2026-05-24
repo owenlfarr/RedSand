@@ -1,0 +1,83 @@
+SIMPLE MENU SETUP - NO BUTTONS, JUST SPACE TO CONTINUE
+========================================================
+
+✅ WHAT'S DONE:
+- MenuController.cs created (replaces all the complex stuff)
+- Works with your existing "PRESS SPACE TO CONTINUE" text
+- Loads "Night 1" scene when you press SPACE
+- Press H to toggle How to Play screen
+- Press ESC to close How to Play screen
+
+📝 WHAT YOU NEED TO DO:
+
+STEP 1: EXIT PLAY MODE
+-----------------------
+If Unity is in Play mode, exit it first.
+
+STEP 2: ADD HOW TO PLAY CONTENT
+--------------------------------
+1. Select "HowToPlayPanel" in the hierarchy
+2. Add a background (optional):
+   - Add Component → UI → Image
+   - Set Color to semi-transparent black: (0, 0, 0, 0.8)
+
+3. Add instruction text:
+   - Right-click HowToPlayPanel → UI → Text - TextMeshPro
+   - Name it "InstructionsText"
+   - Set the text to:
+
+==================================================
+HOW TO PLAY
+
+CONTROLS:
+  WASD - Move
+  Mouse - Look Around
+  SPACE - Jump
+  E - Interact
+  TAB - Show Radar
+  ESC - Return to Menu
+
+OBJECTIVE:
+  Survive the night by defending your base
+  Manage oxygen when outside the bunker
+  Repair systems during solar flares
+  Hide in lockers when threatened
+
+SYSTEMS:
+  Defense - Keep creatures at bay
+  Power - Maintain bunker systems
+  Oxygen - Essential for survival outside
+  Radar - Monitor threats
+
+Press H to toggle this screen
+Press ESC to return
+==================================================
+
+   - Set Font Size: 24
+   - Set Alignment: Top Left
+   - Set Color: White
+   - Enable Word Wrapping
+   - Adjust RectTransform to fill most of the panel
+
+4. Make sure HowToPlayPanel is INACTIVE (unchecked in Inspector)
+
+STEP 3: VERIFY REFERENCES
+--------------------------
+Select GameUICanvas in the hierarchy and check MenuController component:
+- Prompt Text → should reference "Text (TMP)"
+- Black Overlay → should reference "BlackOverlay"
+- How To Play Panel → should reference "HowToPlayPanel"
+- Game Scene Name → should be "Night 1"
+- Fade Duration → 2
+- How To Play Key → H
+
+CONTROLS SUMMARY:
+-----------------
+In Menu Scene:
+  SPACE - Start game (loads Night 1)
+  H - Toggle How to Play screen
+  ESC - Close How to Play screen
+
+✅ Your existing UI stays exactly as you have it!
+✅ Font and text width will NOT be changed by code!
+✅ Simple, clean, no multiplayer!
