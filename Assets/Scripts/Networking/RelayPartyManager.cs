@@ -316,7 +316,8 @@ namespace Networking
 
         public void JoinLobbyFromUI()
         {
-            string code = joinCodeInputField != null ? joinCodeInputField.text : joinCodeInput;
+            string code = ReadJoinCodeFromUI();
+            Debug.Log($"[RelayPartyManager] JoinLobbyFromUI clicked. Code='{code}'.");
             _ = JoinParty(code);
         }
 
@@ -536,6 +537,14 @@ namespace Networking
                 joinCodeInputField = FindObjectByNameContains<TMP_InputField>("join code");
                 if (joinCodeInputField == null)
                 {
+                    joinCodeInputField = FindObjectByNameContains<TMP_InputField>("joinlobbyinput");
+                }
+                if (joinCodeInputField == null)
+                {
+                    joinCodeInputField = FindObjectByNameContains<TMP_InputField>("join lobby input");
+                }
+                if (joinCodeInputField == null)
+                {
                     var allInputs = GetAllSceneObjectsOfType<TMP_InputField>();
                     if (allInputs.Length > 0)
                     {
@@ -600,6 +609,27 @@ namespace Networking
         private void OnJoinCodeChanged(string value)
         {
             joinCodeInput = value;
+        }
+
+        private string ReadJoinCodeFromUI()
+        {
+            string code = joinCodeInputField != null ? joinCodeInputField.text : string.Empty;
+            if (!string.IsNullOrWhiteSpace(code))
+            {
+                return code.Trim();
+            }
+
+            var fallbackField = FindObjectByNameContains<TMP_InputField>("joinlobbyinput")
+                ?? FindObjectByNameContains<TMP_InputField>("join lobby input")
+                ?? FindObjectByNameContains<TMP_InputField>("join code");
+
+            if (fallbackField != null && !string.IsNullOrWhiteSpace(fallbackField.text))
+            {
+                joinCodeInputField = fallbackField;
+                return fallbackField.text.Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(joinCodeInput) ? string.Empty : joinCodeInput.Trim();
         }
 
         private void RefreshLobbyCodeUI()
