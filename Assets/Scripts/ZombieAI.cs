@@ -231,7 +231,7 @@ public class ZombieAI : NetworkBehaviour
         currentMoveDirection = transform.forward;
         wanderAngle = Random.Range(0f, 360f);
 
-        if (IsNetworkSessionActive() && !IsServer && controller != null)
+        if (IsNetworkSessionActive() && IsSpawned && !IsServer && controller != null)
         {
             controller.enabled = false;
         }
@@ -317,7 +317,10 @@ public class ZombieAI : NetworkBehaviour
 
     void Update()
     {
-        if (IsNetworkSessionActive())
+        bool networkActive = IsNetworkSessionActive();
+        bool isSpawnedReplica = networkActive && IsSpawned;
+
+        if (networkActive && isSpawnedReplica)
         {
             if (IsServer)
             {
@@ -332,6 +335,7 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
+        // Fallback path for offline play or scene objects that are not network-spawned yet.
         UpdateOfflineAI();
     }
 
@@ -374,6 +378,11 @@ public class ZombieAI : NetworkBehaviour
 
     void UpdateOfflineAI()
     {
+        if (controller != null && !controller.enabled)
+        {
+            controller.enabled = true;
+        }
+
         RefreshLocalPlayerReference();
 
         if (useFOVPriority)
@@ -446,7 +455,8 @@ public class ZombieAI : NetworkBehaviour
             RaycastHit hit;
             if (Physics.Raycast(transform.position + Vector3.up * 0.5f, directionToPlayer, out hit, distanceToPlayer))
             {
-                if (hit.collider.CompareTag("Player"))
+                PlayerController hitPlayer = hit.collider.GetComponentInParent<PlayerController>();
+                if (hitPlayer != null)
                 {
                     canSeePlayer = true;
                     lastPlayerSeenTime = Time.time;
@@ -792,7 +802,8 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
-        if (hit.gameObject.CompareTag("Player"))
+        PlayerController hitPlayerController = hit.gameObject.GetComponentInParent<PlayerController>();
+        if (hitPlayerController != null)
         {
             hasKilledPlayer = true;
 
@@ -948,23 +959,44 @@ public class ZombieAI : NetworkBehaviour
     {
         if (IsNetworkSessionActive() && NetworkManager.Singleton != null)
         {
-            if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+            if (IsServer)
             {
-                playerTransform = NetworkManager.Singleton.LocalClient.PlayerObject.transform;
-                return;
-            }
+                Transform closest = null;
+                float closestSqrDist = float.MaxValue;
 
-            foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
-            {
-                if (client.PlayerObject != null)
+                foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
                 {
-                    playerTransform = client.PlayerObject.transform;
+                    if (client.PlayerObject == null)
+                    {
+                        continue;
+                    }
+
+                    Transform candidate = client.PlayerObject.transform;
+                    float sqrDist = (candidate.position - transform.position).sqrMagnitude;
+                    if (sqrDist < closestSqrDist)
+                    {
+                        closestSqrDist = sqrDist;
+                        closest = candidate;
+                    }
+                }
+
+                if (closest != null)
+                {
+                    playerTransform = closest;
+                    return;
+                }
+            }
+            else
+            {
+                if (NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+                {
+                    playerTransform = NetworkManager.Singleton.LocalClient.PlayerObject.transform;
                     return;
                 }
             }
         }
 
-        if (playerTransform != null)
+        if (playerTransform != null && playerTransform.gameObject.activeInHierarchy)
         {
             return;
         }

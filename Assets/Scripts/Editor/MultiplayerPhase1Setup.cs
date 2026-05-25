@@ -631,6 +631,9 @@ public static class MultiplayerPhase1Setup
 
     private static void EnsureAuthoritySceneSystems(Scene scene)
     {
+        EnsureAuthorityComponent<ZombieAI>(scene, true);
+        EnsureAuthorityComponent<SurveyorMonster>(scene, true);
+        EnsureAuthorityComponent<RushMonsterEvent>(scene, true);
         EnsureAuthorityComponent<NightTimeManager>(scene, true);
         EnsureAuthorityComponent<PowerSystem>(scene, true);
         EnsureAuthorityComponent<SolarFlareSystem>(scene, true);
@@ -681,9 +684,6 @@ public static class MultiplayerPhase1Setup
     private static void QuarantineSinglePlayerSystems(Scene scene)
     {
         DisableAllOfType<OxygenSystem>(scene);
-        DisableAllOfType<ZombieAI>(scene);
-        DisableAllOfType<SurveyorMonster>(scene);
-        DisableAllOfType<RushMonsterEvent>(scene);
         DisableAllOfType<PowerSystem>(scene);
         DisableAllOfType<NightTimeManager>(scene);
         DisableAllOfType<DefenseSystem>(scene);

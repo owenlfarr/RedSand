@@ -33,6 +33,16 @@ namespace Networking
         [SerializeField] private TMP_Text lobbyCodeText;
         [SerializeField] private Button lobbyCodeDisplayButton;
         [SerializeField] private bool showLegacyOnGUI = false;
+        [SerializeField] private TMP_Text loadingIndicatorText;
+
+        [Header("Lobby Astronauts (Optional)")]
+        [SerializeField] private GameObject player1Visual;
+        [SerializeField] private GameObject player2Visual;
+        [SerializeField] private GameObject player3Visual;
+        [SerializeField] private TextMeshPro player1NameText;
+        [SerializeField] private TextMeshPro player2NameText;
+        [SerializeField] private TextMeshPro player3NameText;
+        [SerializeField] private bool disableAstronautAnimatorsInMenu = false;
 
         [Header("UI Runtime State")]
         [SerializeField] private string latestJoinCode = "";
@@ -45,6 +55,8 @@ namespace Networking
         private bool lobbyCreated;
         private Allocation pendingHostAllocation;
         private bool hasPendingHostAllocation;
+        private float loadingAnimTimer;
+        private int loadingDots;
 
         public bool HasActiveHostParty
         {
@@ -67,7 +79,21 @@ namespace Networking
             WireMenuUI();
             SetLobbyUIState(false);
             RefreshLobbyCodeUI();
+            AutoBindLobbyVisuals();
+            EnsureLoadingIndicatorExists();
+            UpdateLobbyAstronautVisuals();
             await EnsureServicesReady();
+        }
+
+        private void Update()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName || matchStarted)
+            {
+                return;
+            }
+
+            UpdateLoadingIndicator();
+            UpdateLobbyAstronautVisuals();
         }
 
         private void OnEnable()
@@ -562,6 +588,11 @@ namespace Networking
             {
                 lobbyCodeDisplayButton = FindButtonByNameContains("code");
             }
+
+            if (loadingIndicatorText == null)
+            {
+                loadingIndicatorText = FindTextByNameContains("loading");
+            }
         }
 
         private void WireMenuUI()
@@ -713,6 +744,250 @@ namespace Networking
             {
                 backButton.gameObject.SetActive(showHostControls);
             }
+        }
+
+        private void AutoBindLobbyVisuals()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            if (player1Visual == null)
+            {
+                var t = FindObjectByNameContains<Transform>("player1");
+                if (t != null) player1Visual = t.gameObject;
+            }
+
+            if (player2Visual == null)
+            {
+                var t = FindObjectByNameContains<Transform>("player2");
+                if (t != null) player2Visual = t.gameObject;
+            }
+
+            if (player3Visual == null)
+            {
+                var t = FindObjectByNameContains<Transform>("player3");
+                if (t != null) player3Visual = t.gameObject;
+            }
+
+            player1NameText = EnsureNameTag(player1Visual, player1NameText, "Player1NameTag");
+            player2NameText = EnsureNameTag(player2Visual, player2NameText, "Player2NameTag");
+            player3NameText = EnsureNameTag(player3Visual, player3NameText, "Player3NameTag");
+
+            if (disableAstronautAnimatorsInMenu)
+            {
+                DisableAstronautAnimator(player1Visual);
+                DisableAstronautAnimator(player2Visual);
+                DisableAstronautAnimator(player3Visual);
+            }
+        }
+
+        private TextMeshPro EnsureNameTag(GameObject anchor, TextMeshPro current, string tagName)
+        {
+            if (anchor == null)
+            {
+                return current;
+            }
+
+            if (current != null)
+            {
+                current.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+                current.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                current.transform.localScale = Vector3.one * 0.18f;
+                return current;
+            }
+
+            Transform existing = anchor.transform.Find(tagName);
+            if (existing != null)
+            {
+                existing.localPosition = new Vector3(0f, -0.2f, 0f);
+                existing.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                existing.localScale = Vector3.one * 0.18f;
+                return existing.GetComponent<TextMeshPro>();
+            }
+
+            var go = new GameObject(tagName);
+            go.transform.SetParent(anchor.transform, false);
+            go.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+            go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            go.transform.localScale = Vector3.one * 0.18f;
+
+            var text = go.AddComponent<TextMeshPro>();
+            text.alignment = TextAlignmentOptions.Center;
+            text.fontSize = 7.5f;
+            text.text = string.Empty;
+            text.color = Color.white;
+            text.enableAutoSizing = false;
+            return text;
+        }
+
+        private void EnsureLoadingIndicatorExists()
+        {
+            if (loadingIndicatorText != null || SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            Canvas canvas = FindObjectByNameContains<Canvas>("canvas");
+            if (canvas == null)
+            {
+                var anyCanvas = GetAllSceneObjectsOfType<Canvas>();
+                if (anyCanvas.Length > 0)
+                {
+                    canvas = anyCanvas[0];
+                }
+            }
+
+            if (canvas == null)
+            {
+                return;
+            }
+
+            var go = new GameObject("LoadingIndicator");
+            go.transform.SetParent(canvas.transform, false);
+
+            var rect = go.AddComponent<RectTransform>();
+            rect.anchorMin = new Vector2(1f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(1f, 0f);
+            rect.anchoredPosition = new Vector2(-20f, 20f);
+            rect.sizeDelta = new Vector2(420f, 60f);
+
+            loadingIndicatorText = go.AddComponent<TextMeshProUGUI>();
+            loadingIndicatorText.alignment = TextAlignmentOptions.BottomRight;
+            loadingIndicatorText.fontSize = 22f;
+            loadingIndicatorText.color = new Color(0.8f, 0.95f, 1f, 0.9f);
+            loadingIndicatorText.text = string.Empty;
+        }
+
+        private void UpdateLoadingIndicator()
+        {
+            if (loadingIndicatorText == null)
+            {
+                return;
+            }
+
+            loadingAnimTimer += Time.deltaTime;
+            if (loadingAnimTimer >= 0.4f)
+            {
+                loadingAnimTimer = 0f;
+                loadingDots = (loadingDots + 1) % 4;
+            }
+
+            string dots = new string('.', loadingDots);
+            string prefix = isBusy ? "LOADING" : "READY";
+            loadingIndicatorText.text = $"{prefix}{dots}  {statusText}";
+        }
+
+        private void UpdateLobbyAstronautVisuals()
+        {
+            int playerCount = GetLobbyPlayerCount();
+            string localName = GetLocalUserName();
+
+            SetAstronautSlot(player1Visual, player1NameText, playerCount >= 1, localName);
+            SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, "Player2");
+            SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, "Player3");
+        }
+
+        private int GetLobbyPlayerCount()
+        {
+            var nm = NetworkManager.Singleton;
+            bool joinedAsClient = nm != null && nm.IsClient && !nm.IsHost && nm.IsListening;
+            bool inLobbyState = lobbyCreated || HasActiveHostParty || joinedAsClient;
+
+            // Before lobby creation/join, always show only local player.
+            if (!inLobbyState)
+            {
+                return 1;
+            }
+
+            if (nm == null || !nm.IsListening)
+            {
+                return 1;
+            }
+
+            int count = 0;
+            if (nm.ConnectedClientsIds != null)
+            {
+                count = nm.ConnectedClientsIds.Count;
+            }
+            else if (nm.ConnectedClients != null)
+            {
+                count = nm.ConnectedClients.Count;
+            }
+
+            return Mathf.Clamp(count, 1, 3);
+        }
+
+        private static void DisableAstronautAnimator(GameObject visual)
+        {
+            if (visual == null)
+            {
+                return;
+            }
+
+            var animator = visual.GetComponentInChildren<Animator>(true);
+            if (animator != null && animator.enabled)
+            {
+                animator.enabled = false;
+            }
+        }
+
+        private static void SetAstronautSlot(GameObject visual, TextMeshPro nameText, bool active, string displayName)
+        {
+            if (visual != null && visual.activeSelf != active)
+            {
+                visual.SetActive(active);
+            }
+
+            if (nameText != null)
+            {
+                if (nameText.gameObject.activeSelf != active)
+                {
+                    nameText.gameObject.SetActive(active);
+                }
+
+                if (active)
+                {
+                    nameText.text = displayName;
+                }
+            }
+        }
+
+        private string GetLocalUserName()
+        {
+            string playerPrefName = PlayerPrefs.GetString("PlayerName", string.Empty);
+            if (!string.IsNullOrWhiteSpace(playerPrefName))
+            {
+                return playerPrefName.Trim();
+            }
+
+            if (UnityServices.State == ServicesInitializationState.Initialized)
+            {
+                try
+                {
+                    if (AuthenticationService.Instance != null && AuthenticationService.Instance.IsSignedIn)
+                    {
+                        if (!string.IsNullOrWhiteSpace(AuthenticationService.Instance.PlayerName))
+                        {
+                            return AuthenticationService.Instance.PlayerName;
+                        }
+
+                        string playerId = AuthenticationService.Instance.PlayerId;
+                        if (!string.IsNullOrWhiteSpace(playerId))
+                        {
+                            return $"Player_{playerId.Substring(0, Mathf.Min(6, playerId.Length))}";
+                        }
+                    }
+                }
+                catch
+                {
+                    // Services/auth might still be spinning up; fall back below.
+                }
+            }
+
+            return "You";
         }
 
         private void DisableLegacyMenuStartScripts()

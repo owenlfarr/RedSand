@@ -149,6 +149,11 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void Update()
     {
+        if (playerTransform == null || oxygenSystem == null)
+        {
+            RefreshLocalPlayerReference();
+        }
+
         if (IsNetworkSessionActive())
         {
             if (IsServer)

@@ -150,6 +150,11 @@ public class SurveyorMonster : NetworkBehaviour
 
     void Update()
     {
+        if (playerTransform == null)
+        {
+            RefreshLocalPlayerReference();
+        }
+
         if (objectiveTransform == null || hasKilled)
         {
             return;
@@ -584,6 +589,26 @@ public class SurveyorMonster : NetworkBehaviour
     bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    void RefreshLocalPlayerReference()
+    {
+        if (IsNetworkSessionActive() && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClient != null && NetworkManager.Singleton.LocalClient.PlayerObject != null)
+        {
+            playerTransform = NetworkManager.Singleton.LocalClient.PlayerObject.transform;
+            return;
+        }
+
+        if (playerTransform != null)
+        {
+            return;
+        }
+
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+        {
+            playerTransform = player.transform;
+        }
     }
 
     void OnDrawGizmosSelected()
