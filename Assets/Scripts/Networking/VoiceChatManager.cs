@@ -195,12 +195,6 @@ namespace Networking
                 }
             }
 
-            Camera cam = Camera.main;
-            if (cam != null)
-            {
-                return cam.transform;
-            }
-
             return null;
         }
     }

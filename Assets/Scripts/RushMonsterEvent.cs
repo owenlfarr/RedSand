@@ -222,21 +222,26 @@ public class RushMonsterEvent : NetworkBehaviour
             return;
         }
 
-        if (oxygenSystem != null)
+        bool inBunker = false;
+        Collider[] hits = Physics.OverlapSphere(playerTransform.position, 1f);
+        foreach (var hit in hits)
         {
-            isEventActive = isEventActive;
-            isRushPassing = isRushPassing;
+            if (hit != null && hit.CompareTag(bunkerZoneTag))
+            {
+                inBunker = true;
+                break;
+            }
+        }
+
+        if (oxygenSystem != null && oxygenSystem.IsInBunker() != inBunker)
+        {
+            Debug.Log($"[Rush Monster] Offline bunker check mismatch. Oxygen says {oxygenSystem.IsInBunker()}, overlap says {inBunker}");
         }
     }
 
     void TryTriggerEventOffline()
     {
         if (PowerSystem.Instance == null || PowerSystem.Instance.IsPowerOut)
-        {
-            return;
-        }
-
-        if (LockerInteractionNew.Instance == null || !LockerInteractionNew.Instance.IsPlayerHidden())
         {
             return;
         }
@@ -307,7 +312,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
         yield return StartCoroutine(FlickerLightsLocal());
 
-        bool playerHid = LockerInteractionNew.Instance != null && LockerInteractionNew.Instance.IsPlayerHidden();
+        bool playerHid = IsAnyLockerHiddenForLocalPlayer();
         if (playerHid)
         {
             if (rushPassSound != null)
@@ -372,7 +377,7 @@ public class RushMonsterEvent : NetworkBehaviour
                     continue;
                 }
 
-                bool hidden = LockerInteractionNew.Instance != null && LockerInteractionNew.Instance.IsClientHidden(client.ClientId);
+                bool hidden = IsClientHiddenInAnyLocker(client.ClientId);
                 if (!hidden)
                 {
                     playersToKill.Add(client.ClientId);
@@ -613,7 +618,6 @@ public class RushMonsterEvent : NetworkBehaviour
             StartCoroutine(ShowBuiltInJumpscare(restartScene));
         }
 
-        Time.timeScale = 0f;
         Debug.Log("<color=red>[Rush Monster]</color> Player has been killed by the entity");
     }
 
@@ -656,7 +660,6 @@ public class RushMonsterEvent : NetworkBehaviour
 
         yield return new WaitForSecondsRealtime(2f);
 
-        Time.timeScale = 1f;
         if (restartScene)
         {
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
@@ -743,6 +746,34 @@ public class RushMonsterEvent : NetworkBehaviour
     public bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private bool IsAnyLockerHiddenForLocalPlayer()
+    {
+        LockerInteractionNew[] lockers = FindObjectsOfType<LockerInteractionNew>(true);
+        foreach (var locker in lockers)
+        {
+            if (locker != null && locker.IsPlayerHidden())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsClientHiddenInAnyLocker(ulong clientId)
+    {
+        LockerInteractionNew[] lockers = FindObjectsOfType<LockerInteractionNew>(true);
+        foreach (var locker in lockers)
+        {
+            if (locker != null && locker.IsClientHidden(clientId))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public bool IsEventActive()

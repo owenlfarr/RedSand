@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using Unity.Netcode;
 
 public class AmbianceSystem : MonoBehaviour
 {
@@ -35,22 +36,10 @@ public class AmbianceSystem : MonoBehaviour
     private bool isInBunker = false;
     private bool wasInBunkerLastFrame = false;
     private Coroutine crossfadeCoroutine;
+    private bool audioInitialized;
 
     void Start()
     {
-        GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-        if (playerObj != null)
-        {
-            playerTransform = playerObj.transform;
-            Debug.Log("<color=cyan>[Ambiance]</color> Player found for ambiance tracking");
-        }
-        else
-        {
-            Debug.LogError("<color=red>[Ambiance]</color> No player found!");
-            enabled = false;
-            return;
-        }
-
         bunkerAudioSource = gameObject.AddComponent<AudioSource>();
         bunkerAudioSource.clip = bunkerAmbiance;
         bunkerAudioSource.loop = true;
@@ -74,6 +63,14 @@ public class AmbianceSystem : MonoBehaviour
         {
             surfaceAudioSource.Play();
         }
+    }
+
+    void TryInitializeForLocalPlayer()
+    {
+        if (audioInitialized || playerTransform == null)
+        {
+            return;
+        }
 
         bool startInBunker = CheckIfInBunker();
         if (startInBunker)
@@ -92,11 +89,38 @@ public class AmbianceSystem : MonoBehaviour
             wasInBunkerLastFrame = false;
             Debug.Log("<color=cyan>[Ambiance]</color> Started on surface - playing surface ambiance");
         }
+
+        audioInitialized = true;
+    }
+
+    void RefreshLocalPlayerReference()
+    {
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening && NetworkManager.Singleton.LocalClient != null)
+        {
+            var localPlayerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
+            if (localPlayerObject != null)
+            {
+                playerTransform = localPlayerObject.transform;
+            }
+            return;
+        }
+
+        if (playerTransform == null)
+        {
+            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+            if (playerObj != null)
+            {
+                playerTransform = playerObj.transform;
+            }
+        }
     }
 
     void Update()
     {
+        RefreshLocalPlayerReference();
         if (playerTransform == null) return;
+        TryInitializeForLocalPlayer();
+        if (!audioInitialized) return;
 
         bool currentlyInBunker = CheckIfInBunker();
 
@@ -166,15 +190,6 @@ public class AmbianceSystem : MonoBehaviour
 
     void OnDrawGizmosSelected()
     {
-        if (playerTransform == null)
-        {
-            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
-            if (playerObj != null)
-            {
-                playerTransform = playerObj.transform;
-            }
-        }
-
         if (playerTransform != null)
         {
             Gizmos.color = isInBunker ? Color.cyan : Color.yellow;

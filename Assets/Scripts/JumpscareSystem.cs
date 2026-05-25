@@ -94,18 +94,6 @@ public class JumpscareSystem : NetworkBehaviour
 
     void Start()
     {
-        GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
-        {
-            playerController = player.GetComponent<PlayerController>();
-            characterController = player.GetComponent<CharacterController>();
-
-            if (playerController != null && playerController.playerCamera != null)
-            {
-                playerCamera = playerController.playerCamera.GetComponent<Camera>();
-            }
-        }
-
         if (jumpscareImage != null)
         {
             jumpscareImage.gameObject.SetActive(false);
@@ -129,6 +117,8 @@ public class JumpscareSystem : NetworkBehaviour
 
     void Update()
     {
+        RefreshLocalPlayerReference();
+
         if (isJumpscareActive && resetPromptText != null && resetPromptText.gameObject.activeSelf)
         {
             if (Input.GetKeyDown(resetKey))
@@ -180,6 +170,7 @@ public class JumpscareSystem : NetworkBehaviour
 
     IEnumerator JumpscareSequence(Sprite sprite, Texture2D texture, string message, AudioClip customSound)
     {
+        RefreshLocalPlayerReference();
         isJumpscareActive = true;
         if (IsNetworkSessionActive() && IsServer)
         {
@@ -326,5 +317,39 @@ public class JumpscareSystem : NetworkBehaviour
     private bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private void RefreshLocalPlayerReference()
+    {
+        if (IsNetworkSessionActive() && NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClient != null)
+        {
+            var localPlayerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
+            if (localPlayerObject == null)
+            {
+                return;
+            }
+
+            playerController = localPlayerObject.GetComponent<PlayerController>();
+            characterController = localPlayerObject.GetComponent<CharacterController>();
+            if (playerController != null && playerController.playerCamera != null)
+            {
+                playerCamera = playerController.playerCamera.GetComponent<Camera>();
+            }
+            return;
+        }
+
+        if (playerController == null)
+        {
+            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            if (player != null)
+            {
+                playerController = player.GetComponent<PlayerController>();
+                characterController = player.GetComponent<CharacterController>();
+                if (playerController != null && playerController.playerCamera != null)
+                {
+                    playerCamera = playerController.playerCamera.GetComponent<Camera>();
+                }
+            }
+        }
     }
 }

@@ -9,8 +9,6 @@ using System.Collections.Generic;
 [RequireComponent(typeof(NetworkObject))]
 public class LockerInteractionNew : NetworkBehaviour
 {
-    public static LockerInteractionNew Instance { get; private set; }
-
     [Header("Locker Camera")]
     [Tooltip("Reference camera positioned where player should look when hiding")]
     public Transform lockerCameraTransform;
@@ -58,15 +56,6 @@ public class LockerInteractionNew : NetworkBehaviour
 
     void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
-
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
         {
