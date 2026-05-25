@@ -1,8 +1,10 @@
 using UnityEngine;
+using Unity.Netcode;
 
 public class TeleportOnTouch : MonoBehaviour
 {
     [Header("Assign your player prefab here")]
+    [Tooltip("Optional legacy reference. Multiplayer uses the collider that entered the trigger.")]
     public GameObject playerPrefab;
 
     [Header("Assign your teleport destination here")]
@@ -36,7 +38,7 @@ public class TeleportOnTouch : MonoBehaviour
 
     private void CheckForPlayerThroughFloors()
     {
-        if (playerPrefab == null || teleportDestination == null)
+        if (teleportDestination == null)
             return;
 
         Vector3 position = transform.position;
@@ -46,54 +48,89 @@ public class TeleportOnTouch : MonoBehaviour
 
         foreach (RaycastHit hit in hitsAbove)
         {
-            if (hit.collider.gameObject == playerPrefab)
+            if (TryGetTeleportTarget(hit.collider, out var player))
             {
-                TeleportPlayer();
+                TeleportPlayer(player);
                 return;
             }
         }
 
         foreach (RaycastHit hit in hitsBelow)
         {
-            if (hit.collider.gameObject == playerPrefab)
+            if (TryGetTeleportTarget(hit.collider, out var player))
             {
-                TeleportPlayer();
+                TeleportPlayer(player);
                 return;
             }
         }
 
-        float distanceToPlayer = Vector3.Distance(position, playerPrefab.transform.position);
-        if (distanceToPlayer <= detectionRadius)
+        // Legacy fallback path for existing singleplayer setups.
+        if (playerPrefab != null)
         {
-            TeleportPlayer();
+            float distanceToPlayer = Vector3.Distance(position, playerPrefab.transform.position);
+            if (distanceToPlayer <= detectionRadius)
+            {
+                TeleportPlayer(playerPrefab);
+            }
         }
     }
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.gameObject == playerPrefab)
+        if (TryGetTeleportTarget(other, out var player))
         {
-            TeleportPlayer();
+            TeleportPlayer(player);
+        }
+        else if (playerPrefab != null && other.gameObject == playerPrefab)
+        {
+            TeleportPlayer(playerPrefab);
         }
     }
 
-    private void TeleportPlayer()
+    private bool TryGetTeleportTarget(Collider other, out GameObject target)
+    {
+        target = null;
+        if (other == null)
+        {
+            return false;
+        }
+
+        var player = other.GetComponentInParent<PlayerController>();
+        if (player == null)
+        {
+            return false;
+        }
+
+        // In multiplayer, each client should only move its own local player.
+        if (player.TryGetComponent<NetworkObject>(out var netObj) && netObj != null && netObj.IsSpawned)
+        {
+            if (!netObj.IsOwner)
+            {
+                return false;
+            }
+        }
+
+        target = player.gameObject;
+        return true;
+    }
+
+    private void TeleportPlayer(GameObject targetPlayer)
     {
         if (Time.time - lastTeleportTime < teleportCooldown)
         {
             return;
         }
 
-        if (teleportDestination != null && playerPrefab != null)
+        if (teleportDestination != null && targetPlayer != null)
         {
-            CharacterController characterController = playerPrefab.GetComponent<CharacterController>();
+            CharacterController characterController = targetPlayer.GetComponent<CharacterController>();
             
             if (characterController != null)
             {
                 characterController.enabled = false;
             }
             
-            playerPrefab.transform.position = teleportDestination.position;
+            targetPlayer.transform.position = teleportDestination.position;
             
             if (characterController != null)
             {
@@ -108,7 +145,7 @@ public class TeleportOnTouch : MonoBehaviour
             }
             
             lastTeleportTime = Time.time;
-            Debug.Log($"{playerPrefab.name} teleported to {teleportDestination.name}");
+            Debug.Log($"{targetPlayer.name} teleported to {teleportDestination.name}");
         }
         else
         {
