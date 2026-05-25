@@ -17,6 +17,7 @@ public static class MultiplayerPhase1Setup
     private const string RealScenePath = "Assets/Scenes/Night 1.unity";
     private const string RealPrefabPath = "Assets/Prefabs/NetworkRealPlayer.prefab";
     private const string Night1MpTestScenePath = "Assets/Scenes/Night1_MultiplayerTest.unity";
+    private const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity";
 
     [MenuItem("Tools/Networking/Setup Phase 1 Test Scene")]
     public static void RunSetupFromMenu()
@@ -391,14 +392,14 @@ public static class MultiplayerPhase1Setup
 
         foreach (var s in scenes)
         {
-            if (s.path == "Assets/Scenes/Menu.unity") hasMenu = true;
+            if (s.path == MainMenuScenePath) hasMenu = true;
             if (s.path == "Assets/Scenes/Night 1.unity") hasNight = true;
             if (s.path == ScenePath) hasTest = true;
         }
 
         if (!hasMenu)
         {
-            scenes.Add(new EditorBuildSettingsScene("Assets/Scenes/Menu.unity", true));
+            scenes.Add(new EditorBuildSettingsScene(MainMenuScenePath, true));
         }
 
         if (!hasNight)
@@ -425,17 +426,17 @@ public static class MultiplayerPhase1Setup
         }
 
         all[Night1MpTestScenePath] = new EditorBuildSettingsScene(Night1MpTestScenePath, true);
-        all["Assets/Scenes/Menu.unity"] = new EditorBuildSettingsScene("Assets/Scenes/Menu.unity", true);
+        all[MainMenuScenePath] = new EditorBuildSettingsScene(MainMenuScenePath, true);
         all["Assets/Scenes/Night 1.unity"] = new EditorBuildSettingsScene("Assets/Scenes/Night 1.unity", true);
         all[ScenePath] = new EditorBuildSettingsScene(ScenePath, true);
 
         ordered.Add(all[Night1MpTestScenePath]);
-        ordered.Add(all["Assets/Scenes/Menu.unity"]);
+        ordered.Add(all[MainMenuScenePath]);
         ordered.Add(all["Assets/Scenes/Night 1.unity"]);
 
         foreach (var kvp in all)
         {
-            if (kvp.Key == Night1MpTestScenePath || kvp.Key == "Assets/Scenes/Menu.unity" || kvp.Key == "Assets/Scenes/Night 1.unity")
+            if (kvp.Key == Night1MpTestScenePath || kvp.Key == MainMenuScenePath || kvp.Key == "Assets/Scenes/Night 1.unity")
             {
                 continue;
             }
@@ -453,13 +454,13 @@ public static class MultiplayerPhase1Setup
             all[s.path] = new EditorBuildSettingsScene(s.path, true);
         }
 
-        all["Assets/Scenes/Menu.unity"] = new EditorBuildSettingsScene("Assets/Scenes/Menu.unity", true);
+        all[MainMenuScenePath] = new EditorBuildSettingsScene(MainMenuScenePath, true);
         all[Night1MpTestScenePath] = new EditorBuildSettingsScene(Night1MpTestScenePath, true);
         all["Assets/Scenes/Night 1.unity"] = new EditorBuildSettingsScene("Assets/Scenes/Night 1.unity", true);
 
         var ordered = new List<EditorBuildSettingsScene>
         {
-            all["Assets/Scenes/Menu.unity"]
+            all[MainMenuScenePath]
         };
 
         if (all.ContainsKey(Night1MpTestScenePath))
@@ -478,7 +479,7 @@ public static class MultiplayerPhase1Setup
 
         foreach (var kvp in all)
         {
-            if (kvp.Key == "Assets/Scenes/Menu.unity" || kvp.Key == Night1MpTestScenePath || kvp.Key == "Assets/Scenes/Night 1.unity")
+            if (kvp.Key == MainMenuScenePath || kvp.Key == Night1MpTestScenePath || kvp.Key == "Assets/Scenes/Night 1.unity")
             {
                 continue;
             }
@@ -706,7 +707,7 @@ public static class MultiplayerPhase1Setup
 
     private static void EnsureMenuRelayFlow(GameObject networkRealPlayerPrefab)
     {
-        var scene = EditorSceneManager.OpenScene("Assets/Scenes/Menu.unity", OpenSceneMode.Single);
+        var scene = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
 
         var nmGo = GameObject.Find("NetworkManager");
         if (nmGo == null)
@@ -731,6 +732,11 @@ public static class MultiplayerPhase1Setup
             nmGo.AddComponent<RelayPartyManager>();
         }
 
+        if (nmGo.GetComponent<VoiceChatManager>() == null)
+        {
+            nmGo.AddComponent<VoiceChatManager>();
+        }
+
         if (nmGo.GetComponent<PersistentNetworkManager>() == null)
         {
             nmGo.AddComponent<PersistentNetworkManager>();
@@ -751,7 +757,7 @@ public static class MultiplayerPhase1Setup
         nm.NetworkConfig.EnableSceneManagement = true;
 
         EditorUtility.SetDirty(nmGo);
-        EditorSceneManager.SaveScene(scene, "Assets/Scenes/Menu.unity");
+        EditorSceneManager.SaveScene(scene, MainMenuScenePath);
     }
 }
 #endif
