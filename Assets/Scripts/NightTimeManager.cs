@@ -67,6 +67,8 @@ public class NightTimeManager : NetworkBehaviour
     private bool endingTriggered;
     private int totalNightHours;
     private int hoursElapsed;
+    private float networkSyncTimer;
+    private const float NetworkSyncInterval = 0.1f; // 10Hz is enough for UI timers
 
     void Awake()
     {
@@ -98,6 +100,14 @@ public class NightTimeManager : NetworkBehaviour
         if (IsServer)
         {
             InitializeNetworkState();
+            if (NetworkGameState.Instance != null)
+            {
+                if (NetworkGameState.Instance.SessionSeedNetwork.Value == 0)
+                {
+                    NetworkGameState.Instance.InitializeSessionSeed(Random.Range(1, int.MaxValue));
+                }
+                NetworkGameState.Instance.SetRestartInProgress(false);
+            }
             NotifyZombiesOfDifficultyChange();
         }
 
@@ -119,12 +129,12 @@ public class NightTimeManager : NetworkBehaviour
         }
 
         UpdateNetworkNightProgress();
-        PushLocalStateToNetwork();
 
-        if (NetworkGameState.Instance != null)
+        networkSyncTimer += Time.deltaTime;
+        if (networkSyncTimer >= NetworkSyncInterval)
         {
-            NetworkGameState.Instance.InitializeSessionSeed(Random.Range(1, int.MaxValue));
-            NetworkGameState.Instance.SetRestartInProgress(false);
+            networkSyncTimer = 0f;
+            PushLocalStateToNetwork();
         }
     }
 
@@ -287,6 +297,7 @@ public class NightTimeManager : NetworkBehaviour
         endingTriggered = false;
         totalNightHours = CalculateTotalHours();
         hoursElapsed = 0;
+        networkSyncTimer = 0f;
 
         PushLocalStateToNetwork();
     }
@@ -346,11 +357,30 @@ public class NightTimeManager : NetworkBehaviour
             return;
         }
 
-        CurrentHourNetwork.Value = CurrentHour;
-        CurrentMinuteNetwork.Value = CurrentMinute;
-        TotalElapsedTimeNetwork.Value = totalElapsedTime;
-        NightProgressNetwork.Value = NightProgress;
-        EndingTriggeredNetwork.Value = endingTriggered;
+        if (CurrentHourNetwork.Value != CurrentHour)
+        {
+            CurrentHourNetwork.Value = CurrentHour;
+        }
+
+        if (CurrentMinuteNetwork.Value != CurrentMinute)
+        {
+            CurrentMinuteNetwork.Value = CurrentMinute;
+        }
+
+        if (Mathf.Abs(TotalElapsedTimeNetwork.Value - totalElapsedTime) > 0.05f)
+        {
+            TotalElapsedTimeNetwork.Value = totalElapsedTime;
+        }
+
+        if (Mathf.Abs(NightProgressNetwork.Value - NightProgress) > 0.001f)
+        {
+            NightProgressNetwork.Value = NightProgress;
+        }
+
+        if (EndingTriggeredNetwork.Value != endingTriggered)
+        {
+            EndingTriggeredNetwork.Value = endingTriggered;
+        }
     }
 
     private void SyncLocalStateFromNetwork()

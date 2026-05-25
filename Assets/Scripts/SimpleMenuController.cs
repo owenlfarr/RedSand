@@ -67,6 +67,13 @@ public class SimpleMenuController : MonoBehaviour
             }
             return;
         }
+
+        if (SceneManager.GetActiveScene().name == "MainMenu")
+        {
+            Debug.LogWarning("[SimpleMenuController] No RelayPartyManager found in MainMenu; blocking direct scene load.");
+            return;
+        }
+
         hasStarted = true;
         StartCoroutine(FadeAndLoadScene());
     }

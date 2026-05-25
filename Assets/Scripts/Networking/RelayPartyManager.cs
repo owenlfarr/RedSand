@@ -2,6 +2,8 @@ using System;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using TMPro;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using Unity.Networking.Transport.Relay;
@@ -14,36 +16,73 @@ namespace Networking
 {
     public class RelayPartyManager : MonoBehaviour
     {
+        [Header("Menu Scene")]
+        [SerializeField] private string menuSceneName = "MainMenu";
+
         [Header("Scene")]
         [SerializeField] private string multiplayerSceneName = "Night1_MultiplayerTest";
         [SerializeField] private int maxConnections = 3;
         [SerializeField] private string relayConnectionType = "dtls";
 
+        [Header("UI Bindings (Optional)")]
+        [SerializeField] private Button createLobbyButton;
+        [SerializeField] private Button joinLobbyButton;
+        [SerializeField] private Button startGameButton;
+        [SerializeField] private Button backButton;
+        [SerializeField] private TMP_InputField joinCodeInputField;
+        [SerializeField] private TMP_Text lobbyCodeText;
+        [SerializeField] private Button lobbyCodeDisplayButton;
+        [SerializeField] private bool showLegacyOnGUI = false;
+
         [Header("UI Runtime State")]
         [SerializeField] private string latestJoinCode = "";
         [SerializeField] private string statusText = "Idle";
+        [SerializeField] private VoiceChatManager voiceChatManager;
 
         private string joinCodeInput = "";
         private bool isBusy;
         private bool matchStarted;
+        private bool lobbyCreated;
+        private Allocation pendingHostAllocation;
+        private bool hasPendingHostAllocation;
 
         public bool HasActiveHostParty
         {
             get
             {
                 var nm = NetworkManager.Singleton;
-                return nm != null && nm.IsHost && nm.IsListening && !matchStarted && !string.IsNullOrEmpty(latestJoinCode);
+                return !matchStarted && !string.IsNullOrEmpty(latestJoinCode) && (hasPendingHostAllocation || (nm != null && nm.IsHost && nm.IsListening));
             }
         }
 
         private async void Start()
         {
+            NormalizeLegacySceneTarget();
+            DisableLegacyMenuStartScripts();
+            if (voiceChatManager == null)
+            {
+                voiceChatManager = FindObjectOfType<VoiceChatManager>(true);
+            }
+            AutoBindMenuUI();
+            WireMenuUI();
+            SetLobbyUIState(false);
+            RefreshLobbyCodeUI();
             await EnsureServicesReady();
+        }
+
+        private void OnEnable()
+        {
+            SceneManager.sceneLoaded += OnSceneLoaded;
+        }
+
+        private void OnDisable()
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
         }
 
         private void OnGUI()
         {
-            if (SceneManager.GetActiveScene().name != "Menu" || matchStarted)
+            if (!showLegacyOnGUI || SceneManager.GetActiveScene().name != menuSceneName || matchStarted)
             {
                 return;
             }
@@ -111,6 +150,7 @@ namespace Networking
             if (isBusy) return;
             isBusy = true;
             statusText = "Creating party...";
+            RefreshLobbyCodeUI();
 
             try
             {
@@ -152,18 +192,19 @@ namespace Networking
                 }
 
                 transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, relayConnectionType));
-
-                if (!nm.StartHost())
-                {
-                    statusText = "StartHost failed.";
-                    return;
-                }
+                pendingHostAllocation = allocation;
+                hasPendingHostAllocation = true;
 
                 statusText = $"Party created. Join Code: {latestJoinCode}. Waiting for host to start the game.";
+                lobbyCreated = true;
+                _ = TryJoinVoiceSafely(latestJoinCode);
+                SetLobbyUIState(true);
+                RefreshLobbyCodeUI();
             }
             catch (Exception ex)
             {
                 statusText = $"Create party error: {ex.Message}";
+                RefreshLobbyCodeUI();
             }
             finally
             {
@@ -179,6 +220,15 @@ namespace Networking
             }
 
             var nm = NetworkManager.Singleton;
+            if (nm != null && !nm.IsHost)
+            {
+                if (!TryStartPendingHost(nm))
+                {
+                    RefreshLobbyCodeUI();
+                    return;
+                }
+            }
+
             if (!LoadMultiplayerSceneAsHost(nm))
             {
                 return;
@@ -186,6 +236,7 @@ namespace Networking
 
             matchStarted = true;
             statusText = "Starting game...";
+            RefreshLobbyCodeUI();
         }
 
         public async Task JoinParty(string joinCode)
@@ -193,6 +244,7 @@ namespace Networking
             if (isBusy) return;
             isBusy = true;
             statusText = "Joining party...";
+            RefreshLobbyCodeUI();
 
             try
             {
@@ -234,19 +286,62 @@ namespace Networking
                 if (!nm.StartClient())
                 {
                     statusText = "StartClient failed.";
+                    RefreshLobbyCodeUI();
                     return;
                 }
 
                 statusText = "Joined party. Waiting for host scene sync...";
+                _ = TryJoinVoiceSafely(joinCode);
+                RefreshLobbyCodeUI();
             }
             catch (Exception ex)
             {
                 statusText = $"Join party error: {ex.Message}";
+                RefreshLobbyCodeUI();
             }
             finally
             {
                 isBusy = false;
             }
+        }
+
+        public string LatestJoinCode => latestJoinCode;
+
+        public string StatusText => statusText;
+
+        public void CreateLobbyFromUI()
+        {
+            _ = CreateParty();
+        }
+
+        public void JoinLobbyFromUI()
+        {
+            string code = joinCodeInputField != null ? joinCodeInputField.text : joinCodeInput;
+            _ = JoinParty(code);
+        }
+
+        public void StartMatchFromUI()
+        {
+            StartMatch();
+        }
+
+        public void BackFromUI()
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.IsListening)
+            {
+                nm.Shutdown();
+            }
+
+            latestJoinCode = string.Empty;
+            statusText = "Idle";
+            matchStarted = false;
+            lobbyCreated = false;
+            hasPendingHostAllocation = false;
+            pendingHostAllocation = null;
+            _ = TryLeaveVoiceSafely();
+            SetLobbyUIState(false);
+            RefreshLobbyCodeUI();
         }
 
         private async Task<bool> EnsureServicesReady()
@@ -328,6 +423,402 @@ namespace Networking
 
             nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
             return true;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!string.Equals(scene.name, multiplayerSceneName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            DisableNonNetworkPlayersInMultiplayerScene();
+        }
+
+        private void DisableNonNetworkPlayersInMultiplayerScene()
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsListening)
+            {
+                return;
+            }
+
+            var players = UnityEngine.Object.FindObjectsOfType<PlayerController>(true);
+            foreach (var player in players)
+            {
+                if (player == null)
+                {
+                    continue;
+                }
+
+                var networkObject = player.GetComponent<NetworkObject>() ?? player.GetComponentInParent<NetworkObject>();
+                if (networkObject == null)
+                {
+                    player.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        private bool TryStartPendingHost(NetworkManager nm)
+        {
+            if (nm == null)
+            {
+                statusText = "Error: NetworkManager is missing.";
+                return false;
+            }
+
+            if (nm.IsListening && nm.IsHost)
+            {
+                return true;
+            }
+
+            if (!ValidateNetworkManager(nm, out var transport))
+            {
+                return false;
+            }
+
+            if (!hasPendingHostAllocation || pendingHostAllocation == null)
+            {
+                statusText = "No pending lobby allocation. Create Lobby first.";
+                return false;
+            }
+
+            if (nm.IsListening)
+            {
+                nm.Shutdown();
+            }
+
+            transport.SetRelayServerData(AllocationUtils.ToRelayServerData(pendingHostAllocation, relayConnectionType));
+            if (!nm.StartHost())
+            {
+                statusText = "StartHost failed.";
+                return false;
+            }
+
+            hasPendingHostAllocation = false;
+            pendingHostAllocation = null;
+            return true;
+        }
+
+        private void AutoBindMenuUI()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            if (createLobbyButton == null)
+            {
+                createLobbyButton = FindButtonByNameContains("create");
+            }
+
+            if (joinLobbyButton == null)
+            {
+                joinLobbyButton = FindButtonByNameContains("join lobby");
+                if (joinLobbyButton == null)
+                {
+                    joinLobbyButton = FindButtonByNameContains("join");
+                }
+            }
+
+            if (startGameButton == null)
+            {
+                startGameButton = FindButtonByNameContains("start");
+            }
+
+            if (backButton == null)
+            {
+                backButton = FindButtonByNameContains("back");
+            }
+
+            if (joinCodeInputField == null)
+            {
+                joinCodeInputField = FindObjectByNameContains<TMP_InputField>("join code");
+                if (joinCodeInputField == null)
+                {
+                    var allInputs = GetAllSceneObjectsOfType<TMP_InputField>();
+                    if (allInputs.Length > 0)
+                    {
+                        joinCodeInputField = allInputs[0];
+                    }
+                }
+            }
+
+            if (lobbyCodeText == null)
+            {
+                lobbyCodeText = FindTextByNameContains("code");
+            }
+
+            if (lobbyCodeDisplayButton == null)
+            {
+                lobbyCodeDisplayButton = FindButtonByNameContains("code");
+            }
+        }
+
+        private void WireMenuUI()
+        {
+            if (createLobbyButton != null)
+            {
+                createLobbyButton.onClick.RemoveAllListeners();
+                createLobbyButton.onClick.RemoveListener(CreateLobbyFromUI);
+                createLobbyButton.onClick.AddListener(CreateLobbyFromUI);
+            }
+
+            if (joinLobbyButton != null)
+            {
+                joinLobbyButton.onClick.RemoveAllListeners();
+                joinLobbyButton.onClick.RemoveListener(JoinLobbyFromUI);
+                joinLobbyButton.onClick.AddListener(JoinLobbyFromUI);
+            }
+
+            if (startGameButton != null)
+            {
+                startGameButton.onClick.RemoveAllListeners();
+                startGameButton.onClick.RemoveListener(StartMatchFromUI);
+                startGameButton.onClick.AddListener(StartMatchFromUI);
+            }
+
+            if (backButton != null)
+            {
+                backButton.onClick.RemoveAllListeners();
+                backButton.onClick.RemoveListener(BackFromUI);
+                backButton.onClick.AddListener(BackFromUI);
+            }
+
+            if (joinCodeInputField != null)
+            {
+                joinCodeInputField.onValueChanged.RemoveListener(OnJoinCodeChanged);
+                joinCodeInputField.onValueChanged.AddListener(OnJoinCodeChanged);
+            }
+
+            if (lobbyCodeDisplayButton != null)
+            {
+                lobbyCodeDisplayButton.interactable = false;
+            }
+        }
+
+        private void OnJoinCodeChanged(string value)
+        {
+            joinCodeInput = value;
+        }
+
+        private void RefreshLobbyCodeUI()
+        {
+            if (lobbyCodeText == null)
+            {
+                // Fall back to the button label if text wasn't wired.
+                UpdateLobbyCodeButtonLabel(string.IsNullOrEmpty(latestJoinCode) ? "" : latestJoinCode);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(latestJoinCode))
+            {
+                lobbyCodeText.text = "";
+                UpdateLobbyCodeButtonLabel("");
+                return;
+            }
+
+            lobbyCodeText.text = latestJoinCode;
+            UpdateLobbyCodeButtonLabel(latestJoinCode);
+        }
+
+        private void NormalizeLegacySceneTarget()
+        {
+            if (string.Equals(multiplayerSceneName, "Night 1", StringComparison.OrdinalIgnoreCase))
+            {
+                multiplayerSceneName = "Night1_MultiplayerTest";
+            }
+        }
+
+        private void UpdateLobbyCodeButtonLabel(string value)
+        {
+            if (lobbyCodeDisplayButton == null)
+            {
+                return;
+            }
+
+            TMP_Text label = lobbyCodeDisplayButton.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                label.text = value;
+            }
+        }
+
+        private void SetLobbyUIState(bool created)
+        {
+            bool showCreateAndJoin = !created;
+            bool showHostControls = created;
+
+            if (createLobbyButton != null)
+            {
+                createLobbyButton.gameObject.SetActive(showCreateAndJoin);
+            }
+
+            if (joinLobbyButton != null)
+            {
+                joinLobbyButton.gameObject.SetActive(showCreateAndJoin);
+            }
+
+            if (joinCodeInputField != null)
+            {
+                joinCodeInputField.gameObject.SetActive(showCreateAndJoin);
+            }
+
+            if (lobbyCodeDisplayButton != null)
+            {
+                lobbyCodeDisplayButton.gameObject.SetActive(showHostControls);
+            }
+
+            if (lobbyCodeText != null)
+            {
+                lobbyCodeText.gameObject.SetActive(showHostControls);
+            }
+
+            if (startGameButton != null)
+            {
+                startGameButton.gameObject.SetActive(showHostControls);
+            }
+
+            if (backButton != null)
+            {
+                backButton.gameObject.SetActive(showHostControls);
+            }
+        }
+
+        private void DisableLegacyMenuStartScripts()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            var oldMenu = FindObjectOfType<MenuController>(true);
+            if (oldMenu != null)
+            {
+                oldMenu.enabled = false;
+            }
+
+            var mainMenu = FindObjectOfType<MainMenuController>(true);
+            if (mainMenu != null)
+            {
+                mainMenu.enabled = false;
+            }
+
+            var simpleMenu = FindObjectOfType<SimpleMenuController>(true);
+            if (simpleMenu != null)
+            {
+                simpleMenu.enabled = false;
+            }
+        }
+
+        private static Button FindButtonByNameContains(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            token = token.ToLowerInvariant();
+            Button[] buttons = GetAllSceneObjectsOfType<Button>();
+            foreach (Button button in buttons)
+            {
+                if (button != null && button.name.ToLowerInvariant().Contains(token))
+                {
+                    return button;
+                }
+            }
+            return null;
+        }
+
+        private static TMP_Text FindTextByNameContains(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            token = token.ToLowerInvariant();
+            TMP_Text[] texts = GetAllSceneObjectsOfType<TMP_Text>();
+            foreach (TMP_Text text in texts)
+            {
+                if (text != null && text.name.ToLowerInvariant().Contains(token))
+                {
+                    return text;
+                }
+            }
+            return null;
+        }
+
+        private static T FindObjectByNameContains<T>(string token) where T : Component
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return null;
+            }
+
+            token = token.ToLowerInvariant();
+            T[] objects = GetAllSceneObjectsOfType<T>();
+            foreach (T obj in objects)
+            {
+                if (obj != null && obj.name.ToLowerInvariant().Contains(token))
+                {
+                    return obj;
+                }
+            }
+            return null;
+        }
+
+        private static T[] GetAllSceneObjectsOfType<T>() where T : Component
+        {
+            T[] all = Resources.FindObjectsOfTypeAll<T>();
+            var list = new System.Collections.Generic.List<T>(all.Length);
+            foreach (T item in all)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                if (item.gameObject.scene.IsValid())
+                {
+                    list.Add(item);
+                }
+            }
+            return list.ToArray();
+        }
+
+        private async Task TryJoinVoiceSafely(string channelCode)
+        {
+            if (voiceChatManager == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await voiceChatManager.JoinLobbyVoiceAsync(channelCode);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[RelayPartyManager] Voice join failed (non-blocking): {ex.Message}");
+            }
+        }
+
+        private async Task TryLeaveVoiceSafely()
+        {
+            if (voiceChatManager == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await voiceChatManager.LeaveCurrentChannelAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[RelayPartyManager] Voice leave failed (non-blocking): {ex.Message}");
+            }
         }
     }
 }

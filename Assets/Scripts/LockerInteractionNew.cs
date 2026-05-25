@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine.InputSystem;
 #endif
 using Unity.Netcode;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(NetworkObject))]
 public class LockerInteractionNew : NetworkBehaviour
@@ -50,6 +51,8 @@ public class LockerInteractionNew : NetworkBehaviour
     private Quaternion originalCameraLocalRotation;
     private float originalFOV;
     private AudioSource audioSource;
+    private readonly Dictionary<Renderer, bool> rendererOriginalState = new Dictionary<Renderer, bool>();
+    private ulong lastAppliedHiddenClientId = ulong.MaxValue;
 
     private const KeyCode INTERACTION_KEY = KeyCode.E;
 
@@ -133,6 +136,7 @@ public class LockerInteractionNew : NetworkBehaviour
 
     void Update()
     {
+        ApplyNetworkHiddenVisualState();
         RefreshLocalPlayerReference();
         CheckPlayerProximity();
 
@@ -255,6 +259,7 @@ public class LockerInteractionNew : NetworkBehaviour
         }
 
         isPlayerHidden = true;
+        SetPlayerVisualHidden(playerTransform, true);
 
         if (doorCloseSound != null && audioSource != null)
         {
@@ -289,6 +294,7 @@ public class LockerInteractionNew : NetworkBehaviour
 
         RestorePlayerFromLocker();
         isPlayerHidden = false;
+        SetPlayerVisualHidden(playerTransform, false);
 
         if (shouldPlaySound && doorOpenSound != null && audioSource != null)
         {
@@ -529,6 +535,88 @@ public class LockerInteractionNew : NetworkBehaviour
     bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    void ApplyNetworkHiddenVisualState()
+    {
+        if (!IsNetworkSessionActive() || NetworkManager.Singleton == null)
+        {
+            return;
+        }
+
+        ulong hiddenId = HiddenClientIdNetwork.Value;
+        if (hiddenId == lastAppliedHiddenClientId)
+        {
+            return;
+        }
+
+        // Restore the previously hidden player's visuals if needed.
+        if (lastAppliedHiddenClientId != ulong.MaxValue)
+        {
+            Transform prev = GetPlayerTransformByClientId(lastAppliedHiddenClientId);
+            if (prev != null)
+            {
+                SetPlayerVisualHidden(prev, false);
+            }
+        }
+
+        // Hide the current hidden player's visuals.
+        if (hiddenId != ulong.MaxValue)
+        {
+            Transform nowHidden = GetPlayerTransformByClientId(hiddenId);
+            if (nowHidden != null)
+            {
+                SetPlayerVisualHidden(nowHidden, true);
+            }
+        }
+
+        lastAppliedHiddenClientId = hiddenId;
+    }
+
+    Transform GetPlayerTransformByClientId(ulong clientId)
+    {
+        if (NetworkManager.Singleton == null || NetworkManager.Singleton.ConnectedClients == null)
+        {
+            return null;
+        }
+
+        if (!NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
+        {
+            return null;
+        }
+
+        return client.PlayerObject.transform;
+    }
+
+    void SetPlayerVisualHidden(Transform playerRoot, bool hidden)
+    {
+        if (playerRoot == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = playerRoot.GetComponentsInChildren<Renderer>(true);
+        foreach (Renderer renderer in renderers)
+        {
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            if (!rendererOriginalState.ContainsKey(renderer))
+            {
+                rendererOriginalState[renderer] = renderer.enabled;
+            }
+
+            if (hidden)
+            {
+                renderer.enabled = false;
+            }
+            else if (rendererOriginalState.TryGetValue(renderer, out bool wasEnabled))
+            {
+                renderer.enabled = wasEnabled;
+            }
+        }
     }
 
     void OnDrawGizmosSelected()
