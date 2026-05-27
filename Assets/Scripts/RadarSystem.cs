@@ -120,7 +120,11 @@ public class RadarSystem : NetworkBehaviour
 
         if (isPlayerInRange && !IsRadarLockedOut())
         {
-            if (Input.GetKeyDown(INTERACTION_KEY))
+            if (IsOnCooldown())
+            {
+                UpdateInteractionPromptDuringCooldown();
+            }
+            else if (Input.GetKeyDown(INTERACTION_KEY))
             {
                 if (IsNetworkSessionActive())
                 {
@@ -138,8 +142,6 @@ public class RadarSystem : NetworkBehaviour
                     TryActivateRadarOffline();
                 }
             }
-
-            UpdateInteractionPromptDuringCooldown();
         }
 
         UpdateCooldownDisplay();
@@ -505,7 +507,7 @@ public class RadarSystem : NetworkBehaviour
             return;
         }
 
-        if (IsOnCooldown() && !isPlayerInRange)
+        if (IsOnCooldown())
         {
             float remaining = GetRemainingCooldown();
             cooldownText.text = $"Radar: {remaining:F1}s";

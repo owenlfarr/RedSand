@@ -135,7 +135,11 @@ public class DefenseSystem : NetworkBehaviour
 
         if (isPlayerInRange && !IsDefenseLockedOut())
         {
-            if (Input.GetKeyDown(INTERACTION_KEY))
+            if (IsOnCooldown())
+            {
+                UpdateInteractionPromptDuringCooldown();
+            }
+            else if (Input.GetKeyDown(INTERACTION_KEY))
             {
                 if (IsNetworkSessionActive())
                 {
@@ -153,8 +157,6 @@ public class DefenseSystem : NetworkBehaviour
                     TryActivateDefenseOffline();
                 }
             }
-
-            UpdateInteractionPromptDuringCooldown();
         }
 
         UpdateCooldownDisplay();
@@ -580,7 +582,7 @@ public class DefenseSystem : NetworkBehaviour
             {
                 DefenseCooldownUI.Instance.RegisterDefense(this, defenseName, remaining);
             }
-            else if (cooldownText != null && !isPlayerInRange)
+            else if (cooldownText != null)
             {
                 cooldownText.text = $"Defense: {remaining:F1}s";
                 cooldownText.color = new Color(1f, 0.6f, 0f);
