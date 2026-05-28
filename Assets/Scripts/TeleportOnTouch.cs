@@ -137,12 +137,7 @@ public class TeleportOnTouch : MonoBehaviour
                 characterController.enabled = true;
             }
             
-            if (flashlight != null)
-            {
-                flashlight.gameObject.SetActive(true);
-                flashlight.enabled = enableFlashlightOnTeleport;
-                Debug.Log($"<color=yellow>[Teleport]</color> Flashlight {(enableFlashlightOnTeleport ? "enabled" : "disabled")} on teleport");
-            }
+            SetPlayerFlashlight(targetPlayer, enableFlashlightOnTeleport);
             
             lastTeleportTime = Time.time;
             Debug.Log($"{targetPlayer.name} teleported to {teleportDestination.name}");
@@ -151,5 +146,42 @@ public class TeleportOnTouch : MonoBehaviour
         {
             Debug.LogWarning("Teleport destination not set!");
         }
+    }
+
+    private void SetPlayerFlashlight(GameObject targetPlayer, bool enabledState)
+    {
+        Light targetFlashlight = null;
+
+        if (targetPlayer != null)
+        {
+            Light[] playerLights = targetPlayer.GetComponentsInChildren<Light>(true);
+            foreach (Light playerLight in playerLights)
+            {
+                if (playerLight != null && playerLight.type == LightType.Spot)
+                {
+                    targetFlashlight = playerLight;
+                    break;
+                }
+            }
+
+            if (targetFlashlight == null && playerLights.Length > 0)
+            {
+                targetFlashlight = playerLights[0];
+            }
+        }
+
+        if (targetFlashlight == null)
+        {
+            targetFlashlight = flashlight;
+        }
+
+        if (targetFlashlight == null)
+        {
+            return;
+        }
+
+        targetFlashlight.gameObject.SetActive(true);
+        targetFlashlight.enabled = enabledState;
+        Debug.Log($"<color=yellow>[Teleport]</color> {targetFlashlight.name} {(enabledState ? "enabled" : "disabled")} on teleport");
     }
 }

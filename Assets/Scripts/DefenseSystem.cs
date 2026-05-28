@@ -235,7 +235,7 @@ public class DefenseSystem : NetworkBehaviour
     {
         float effectiveCooldown = GetEffectiveCooldownTime();
         float activationTime = IsNetworkSessionActive() ? LastActivationTimeNetwork.Value : lastActivationTime;
-        return Time.time - activationTime < effectiveCooldown;
+        return GetCooldownClockTime() - activationTime < effectiveCooldown;
     }
 
     float GetEffectiveCooldownTime()
@@ -332,7 +332,7 @@ public class DefenseSystem : NetworkBehaviour
         }
 
         ActivateDefenseInternal(isNetworkSession: true);
-        lastActivationTime = Time.time;
+        lastActivationTime = GetCooldownClockTime();
         LastActivationTimeNetwork.Value = lastActivationTime;
         IsOnCooldownNetwork.Value = true;
     }
@@ -609,7 +609,7 @@ public class DefenseSystem : NetworkBehaviour
     {
         float effectiveCooldown = GetEffectiveCooldownTime();
         float activationTime = IsNetworkSessionActive() ? LastActivationTimeNetwork.Value : lastActivationTime;
-        float remaining = effectiveCooldown - (Time.time - activationTime);
+        float remaining = effectiveCooldown - (GetCooldownClockTime() - activationTime);
         return Mathf.Max(0f, remaining);
     }
 
@@ -643,6 +643,16 @@ public class DefenseSystem : NetworkBehaviour
     bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private float GetCooldownClockTime()
+    {
+        if (IsNetworkSessionActive() && NetworkManager.Singleton != null)
+        {
+            return (float)NetworkManager.Singleton.ServerTime.Time;
+        }
+
+        return Time.time;
     }
 
     void SyncLocalStateFromNetwork()

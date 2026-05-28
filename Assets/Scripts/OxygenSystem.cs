@@ -74,6 +74,8 @@ public class OxygenSystem : NetworkBehaviour
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0f;
 
+        EnsureLocalUIReferences();
+
         if (deathScreen != null)
         {
             deathScreen.SetActive(false);
@@ -110,10 +112,11 @@ public class OxygenSystem : NetworkBehaviour
 
     void Update()
     {
-        if (NetworkManager.Singleton == null)
+        if (!IsNetworkSessionActive())
         {
             if (isDead) return;
 
+            EnsureLocalUIReferences();
             CheckBunkerZoneLocal();
             UpdateOxygenLocal();
             UpdateOxygenUI();
@@ -144,8 +147,12 @@ public class OxygenSystem : NetworkBehaviour
             }
         }
 
-        UpdateOxygenUI();
-        CheckLowOxygenWarning();
+        if (IsOwner)
+        {
+            EnsureLocalUIReferences();
+            UpdateOxygenUI();
+            CheckLowOxygenWarning();
+        }
     }
 
     void CheckBunkerZone()
@@ -446,9 +453,53 @@ public class OxygenSystem : NetworkBehaviour
         return GetIsInBunkerValue();
     }
 
+    private void EnsureLocalUIReferences()
+    {
+        if (IsNetworkSessionActive() && !IsOwner)
+        {
+            return;
+        }
+
+        if (oxygenText == null)
+        {
+            GameObject oxygenTextObject = GameObject.Find("OxygenText");
+            if (oxygenTextObject != null)
+            {
+                oxygenText = oxygenTextObject.GetComponent<TextMeshProUGUI>();
+            }
+        }
+
+        if (oxygenBarFill == null)
+        {
+            GameObject oxygenBarObject = GameObject.Find("OxygenBarContainer");
+            if (oxygenBarObject != null)
+            {
+                Transform fillTransform = oxygenBarObject.transform.Find("Fill");
+                if (fillTransform != null)
+                {
+                    oxygenBarFill = fillTransform.GetComponent<Image>();
+                }
+            }
+
+            if (oxygenBarFill == null)
+            {
+                GameObject fillObject = GameObject.Find("Fill");
+                if (fillObject != null)
+                {
+                    oxygenBarFill = fillObject.GetComponent<Image>();
+                }
+            }
+        }
+
+        if (deathScreen == null)
+        {
+            deathScreen = GameObject.Find("DeathScreen");
+        }
+    }
+
     private float GetCurrentOxygenValue()
     {
-        if (oxygenState != null)
+        if (IsNetworkSessionActive() && oxygenState != null)
         {
             return oxygenState.CurrentOxygen.Value;
         }
@@ -458,11 +509,16 @@ public class OxygenSystem : NetworkBehaviour
 
     private bool GetIsInBunkerValue()
     {
-        if (oxygenState != null)
+        if (IsNetworkSessionActive() && oxygenState != null)
         {
             return oxygenState.IsInBunker.Value;
         }
 
         return isInBunker;
+    }
+
+    private bool IsNetworkSessionActive()
+    {
+        return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
     }
 }

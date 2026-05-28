@@ -268,7 +268,7 @@ public class RadarSystem : NetworkBehaviour
         }
 
         PerformRadarScanServer();
-        lastScanTime = Time.time;
+        lastScanTime = GetCooldownClockTime();
         LastScanTimeNetwork.Value = lastScanTime;
         IsOnCooldownNetwork.Value = true;
     }
@@ -469,14 +469,14 @@ public class RadarSystem : NetworkBehaviour
     {
         float effectiveCooldown = GetEffectiveCooldownTime();
         float scanTime = IsNetworkSessionActive() ? LastScanTimeNetwork.Value : lastScanTime;
-        return Time.time - scanTime < effectiveCooldown;
+        return GetCooldownClockTime() - scanTime < effectiveCooldown;
     }
 
     float GetRemainingCooldown()
     {
         float effectiveCooldown = GetEffectiveCooldownTime();
         float scanTime = IsNetworkSessionActive() ? LastScanTimeNetwork.Value : lastScanTime;
-        float remaining = effectiveCooldown - (Time.time - scanTime);
+        float remaining = effectiveCooldown - (GetCooldownClockTime() - scanTime);
         return Mathf.Max(0f, remaining);
     }
 
@@ -553,6 +553,16 @@ public class RadarSystem : NetworkBehaviour
     bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private float GetCooldownClockTime()
+    {
+        if (IsNetworkSessionActive() && NetworkManager.Singleton != null)
+        {
+            return (float)NetworkManager.Singleton.ServerTime.Time;
+        }
+
+        return Time.time;
     }
 
     void SyncLocalStateFromNetwork()
