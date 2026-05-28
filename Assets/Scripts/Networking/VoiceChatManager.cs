@@ -12,8 +12,8 @@ namespace Networking
         [Header("Voice Chat")]
         [SerializeField] private bool autoJoinAudioOnly = true;
         [SerializeField] private bool useProximityVoice = true;
-        [SerializeField] private float audibleRange = 18f;
-        [SerializeField] private float conversationalRange = 6f;
+        [SerializeField] private float audibleRange = 36f;
+        [SerializeField] private float conversationalRange = 12f;
         [SerializeField] private float audioFadeModelExponent = 1f;
         [SerializeField] private float positionUpdateInterval = 0.1f;
         [SerializeField] private Transform localVoiceTransform;

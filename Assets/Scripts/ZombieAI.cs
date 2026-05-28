@@ -416,6 +416,11 @@ public class ZombieAI : NetworkBehaviour
     void CheckPlayerDistance()
     {
         if (playerTransform == null) return;
+        if (IsPlayerDead(playerTransform))
+        {
+            ClearKilledOrDeadPlayerTarget();
+            return;
+        }
 
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
         if (distanceToPlayer <= detectionRadius)
@@ -438,6 +443,11 @@ public class ZombieAI : NetworkBehaviour
     void CheckPlayerVisibility()
     {
         if (playerTransform == null) return;
+        if (IsPlayerDead(playerTransform))
+        {
+            ClearKilledOrDeadPlayerTarget();
+            return;
+        }
 
         float distanceToPlayer = Vector3.Distance(transform.position, playerTransform.position);
         Vector3 directionToPlayer = (playerTransform.position - transform.position).normalized;
@@ -531,6 +541,11 @@ public class ZombieAI : NetworkBehaviour
     void ChasePlayer()
     {
         if (playerTransform == null) return;
+        if (IsPlayerDead(playerTransform))
+        {
+            ClearKilledOrDeadPlayerTarget();
+            return;
+        }
 
         Vector3 playerDirection = (playerTransform.position - transform.position).normalized;
         playerDirection.y = 0;
@@ -805,7 +820,15 @@ public class ZombieAI : NetworkBehaviour
         PlayerController hitPlayerController = hit.gameObject.GetComponentInParent<PlayerController>();
         if (hitPlayerController != null)
         {
+            if (IsPlayerDead(hitPlayerController.transform))
+            {
+                ClearKilledOrDeadPlayerTarget();
+                return;
+            }
+
             hasKilledPlayer = true;
+            Transform killedPlayer = hitPlayerController.transform;
+            MarkPlayerKilled(killedPlayer);
 
             if (IsNetworkSessionActive() && IsServer)
             {
@@ -819,6 +842,8 @@ public class ZombieAI : NetworkBehaviour
             {
                 TriggerZombieJumpscareOffline();
             }
+
+            ResumeRoamingAfterKill(killedPlayer);
         }
     }
 
@@ -972,6 +997,11 @@ public class ZombieAI : NetworkBehaviour
                     }
 
                     Transform candidate = client.PlayerObject.transform;
+                    if (IsPlayerDead(candidate))
+                    {
+                        continue;
+                    }
+
                     float sqrDist = (candidate.position - transform.position).sqrMagnitude;
                     if (sqrDist < closestSqrDist)
                     {
@@ -1011,6 +1041,55 @@ public class ZombieAI : NetworkBehaviour
     public bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private bool IsPlayerDead(Transform candidate)
+    {
+        if (candidate == null)
+        {
+            return true;
+        }
+
+        OxygenSystem oxygen = candidate.GetComponent<OxygenSystem>();
+        return oxygen != null && oxygen.IsDead();
+    }
+
+    private void MarkPlayerKilled(Transform killedPlayer)
+    {
+        if (killedPlayer == null)
+        {
+            return;
+        }
+
+        OxygenSystem oxygen = killedPlayer.GetComponent<OxygenSystem>();
+        if (oxygen != null)
+        {
+            oxygen.MarkDeadFromMonster();
+        }
+    }
+
+    private void ResumeRoamingAfterKill(Transform killedPlayer)
+    {
+        if (playerTransform == killedPlayer)
+        {
+            playerTransform = null;
+        }
+
+        hasKilledPlayer = false;
+        canSeePlayer = false;
+        isChasing = false;
+        lastPlayerSeenTime = -999f;
+        CheckForStalking();
+    }
+
+    private void ClearKilledOrDeadPlayerTarget()
+    {
+        playerTransform = null;
+        hasKilledPlayer = false;
+        canSeePlayer = false;
+        isChasing = false;
+        lastPlayerSeenTime = -999f;
+        CheckForStalking();
     }
 
     void OnDrawGizmosSelected()

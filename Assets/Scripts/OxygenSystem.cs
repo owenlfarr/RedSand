@@ -34,6 +34,11 @@ public class OxygenSystem : NetworkBehaviour
     public AudioClip deathSound;
     public AudioClip enterSurfaceSound;
 
+    public NetworkVariable<bool> IsFlashlightEnabledNetwork = new NetworkVariable<bool>(
+        false,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
     private float currentOxygen;
     private NetworkOxygenState oxygenState;
     private bool isInBunker = false;
@@ -46,6 +51,7 @@ public class OxygenSystem : NetworkBehaviour
     private float drainRate;
     private float rechargeRate;
     private Collider[] bunkerCheckResults = new Collider[10];
+    private Light playerFlashlight;
 
     void Start()
     {
@@ -108,6 +114,18 @@ public class OxygenSystem : NetworkBehaviour
         }
 
         UpdateOxygenUI();
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        IsFlashlightEnabledNetwork.OnValueChanged += OnFlashlightEnabledNetworkChanged;
+        EnsureFlashlightReference();
+        ApplyFlashlightState(IsFlashlightEnabledNetwork.Value);
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        IsFlashlightEnabledNetwork.OnValueChanged -= OnFlashlightEnabledNetworkChanged;
     }
 
     void Update()
@@ -453,6 +471,50 @@ public class OxygenSystem : NetworkBehaviour
         return GetIsInBunkerValue();
     }
 
+    public bool IsDead()
+    {
+        if (IsNetworkSessionActive() && oxygenState != null)
+        {
+            return oxygenState.IsDead.Value;
+        }
+
+        return isDead;
+    }
+
+    public void MarkDeadFromMonster()
+    {
+        if (IsNetworkSessionActive())
+        {
+            if (IsServer && oxygenState != null)
+            {
+                oxygenState.IsDead.Value = true;
+            }
+
+            return;
+        }
+
+        isDead = true;
+    }
+
+    public void SetFlashlightEnabled(bool enabledState)
+    {
+        ApplyFlashlightState(enabledState);
+
+        if (!IsNetworkSessionActive())
+        {
+            return;
+        }
+
+        if (IsServer)
+        {
+            IsFlashlightEnabledNetwork.Value = enabledState;
+        }
+        else
+        {
+            SetFlashlightEnabledServerRpc(enabledState);
+        }
+    }
+
     private void EnsureLocalUIReferences()
     {
         if (IsNetworkSessionActive() && !IsOwner)
@@ -495,6 +557,62 @@ public class OxygenSystem : NetworkBehaviour
         {
             deathScreen = GameObject.Find("DeathScreen");
         }
+    }
+
+    private void EnsureFlashlightReference()
+    {
+        if (playerFlashlight != null)
+        {
+            return;
+        }
+
+        Light[] playerLights = GetComponentsInChildren<Light>(true);
+        foreach (Light playerLight in playerLights)
+        {
+            if (playerLight != null && playerLight.type == LightType.Spot)
+            {
+                playerFlashlight = playerLight;
+                return;
+            }
+        }
+
+        if (playerLights.Length > 0)
+        {
+            playerFlashlight = playerLights[0];
+        }
+    }
+
+    private void ApplyFlashlightState(bool enabledState)
+    {
+        EnsureFlashlightReference();
+        if (playerFlashlight == null)
+        {
+            return;
+        }
+
+        playerFlashlight.gameObject.SetActive(true);
+        playerFlashlight.enabled = enabledState;
+    }
+
+    private void OnFlashlightEnabledNetworkChanged(bool previousValue, bool currentValue)
+    {
+        ApplyFlashlightState(currentValue);
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    private void SetFlashlightEnabledServerRpc(bool enabledState, ServerRpcParams serverRpcParams = default)
+    {
+        if (!IsServer)
+        {
+            return;
+        }
+
+        if (OwnerClientId != serverRpcParams.Receive.SenderClientId)
+        {
+            return;
+        }
+
+        IsFlashlightEnabledNetwork.Value = enabledState;
     }
 
     private float GetCurrentOxygenValue()

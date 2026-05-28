@@ -150,6 +150,13 @@ public class TeleportOnTouch : MonoBehaviour
 
     private void SetPlayerFlashlight(GameObject targetPlayer, bool enabledState)
     {
+        OxygenSystem oxygenSystem = targetPlayer != null ? targetPlayer.GetComponent<OxygenSystem>() : null;
+        if (oxygenSystem != null)
+        {
+            oxygenSystem.SetFlashlightEnabled(enabledState);
+            return;
+        }
+
         Light targetFlashlight = null;
 
         if (targetPlayer != null)
