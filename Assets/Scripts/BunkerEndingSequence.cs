@@ -70,6 +70,7 @@ public class BunkerEndingSequence : NetworkBehaviour
 
     // ── Internals ──────────────────────────────────────────────────────────
     private bool sequenceStarted = false;
+    private bool sequenceCoroutineStarted = false;
     private AudioSource audioSource;
     private Canvas overlayCanvas;
     private Image fadeImage;
@@ -117,11 +118,23 @@ public class BunkerEndingSequence : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        SequenceStartedNetwork.OnValueChanged += OnSequenceStartedNetworkChanged;
+
         if (IsServer)
         {
             SequenceStartedNetwork.Value = sequenceStarted;
             IsActiveNetwork.Value = IsActive;
         }
+
+        if (SequenceStartedNetwork.Value)
+        {
+            StartEndingLocally();
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        SequenceStartedNetwork.OnValueChanged -= OnSequenceStartedNetworkChanged;
     }
 
     void Update()
@@ -132,25 +145,29 @@ public class BunkerEndingSequence : NetworkBehaviour
     /// <summary>Kick off the ending from external code if needed.</summary>
     public void TriggerEnding()
     {
-        if (sequenceStarted) return;
-        sequenceStarted = true;
-        IsActive = true;
         if (IsNetworkSessionActive() && IsServer)
         {
+            if (sequenceStarted) return;
+            sequenceStarted = true;
+            IsActive = true;
             SequenceStartedNetwork.Value = true;
             IsActiveNetwork.Value = true;
             if (NetworkGameState.Instance != null)
             {
                 NetworkGameState.Instance.SetRestartInProgress(true);
             }
+            TriggerEndingClientRpc();
+            StartEndingLocally();
+            return;
         }
-        StartCoroutine(RunEndingSequence());
+
+        StartEndingLocally();
     }
 
     IEnumerator RunEndingSequence()
     {
         // ── 1. Freeze player movement, allow look ──────────────────────────
-        PlayerController pc = FindObjectOfType<PlayerController>();
+        PlayerController pc = ResolveLocalPlayerController();
         if (pc != null)
         {
             pc.enabled = false;
@@ -174,15 +191,8 @@ public class BunkerEndingSequence : NetworkBehaviour
         // ── 2. Teleport player into the bunker ─────────────────────────────
         if (bunkerEndingPosition != null && pc != null)
         {
-            CharacterController cc = pc.GetComponent<CharacterController>();
-            if (cc != null) cc.enabled = false;
-            pc.transform.position = bunkerEndingPosition.position;
-            pc.transform.rotation = bunkerEndingPosition.rotation;
-            if (cc != null)
-            {
-                yield return null; // one frame gap before re-enabling.
-                cc.enabled = true;
-            }
+            TeleportLocalPlayerToEndingSpot(pc);
+            yield return null;
         }
 
         yield return new WaitForSeconds(0.1f);
@@ -359,5 +369,64 @@ public class BunkerEndingSequence : NetworkBehaviour
     private bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private void StartEndingLocally()
+    {
+        if (sequenceCoroutineStarted) return;
+
+        sequenceStarted = true;
+        sequenceCoroutineStarted = true;
+        IsActive = true;
+        StartCoroutine(RunEndingSequence());
+    }
+
+    private void OnSequenceStartedNetworkChanged(bool previousValue, bool currentValue)
+    {
+        if (currentValue)
+        {
+            StartEndingLocally();
+        }
+    }
+
+    [ClientRpc]
+    private void TriggerEndingClientRpc()
+    {
+        StartEndingLocally();
+    }
+
+    private PlayerController ResolveLocalPlayerController()
+    {
+        if (IsNetworkSessionActive() &&
+            NetworkManager.Singleton != null &&
+            NetworkManager.Singleton.LocalClient != null &&
+            NetworkManager.Singleton.LocalClient.PlayerObject != null)
+        {
+            return NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<PlayerController>();
+        }
+
+        return FindObjectOfType<PlayerController>();
+    }
+
+    private void TeleportLocalPlayerToEndingSpot(PlayerController pc)
+    {
+        CharacterController cc = pc.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            cc.enabled = false;
+        }
+
+        pc.transform.SetPositionAndRotation(bunkerEndingPosition.position, bunkerEndingPosition.rotation);
+
+        if (pc.playerCamera != null)
+        {
+            pc.playerCamera.localPosition = pc.cameraStartPos;
+            pc.playerCamera.localRotation = Quaternion.identity;
+        }
+
+        if (cc != null)
+        {
+            cc.enabled = true;
+        }
     }
 }

@@ -3976,7 +3976,7 @@ Animator:
   m_GameObject: {fileID: 220876820}
   m_Enabled: 1
   m_Avatar: {fileID: 9000000, guid: 638f44b41e0a6471486ec2c4e9ca96fd, type: 3}
-  m_Controller: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: bd1c841cda2904443a3efef18c0f694d, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -4887,7 +4887,7 @@ Animator:
   m_GameObject: {fileID: 299403211}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
-  m_Controller: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: bd1c841cda2904443a3efef18c0f694d, type: 2}
   m_CullingMode: 0
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
@@ -30462,6 +30462,8 @@ MonoBehaviour:
   lowOxygenWarning: {fileID: 8300000, guid: afc87ea8d51304c42abc41f4e02dddb1, type: 3}
   deathSound: {fileID: 8300000, guid: 40c5cbc8cc672ab4eb7881be5a7502a6, type: 3}
   enterSurfaceSound: {fileID: 8300000, guid: ed1e4d387aebce648bb581382a45ac04, type: 3}
+  IsFlashlightEnabledNetwork:
+    m_InternalValue: 0
 --- !u!114 &1189548248
 MonoBehaviour:
   m_ObjectHideFlags: 0

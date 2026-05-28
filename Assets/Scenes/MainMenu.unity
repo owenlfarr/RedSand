@@ -3058,8 +3058,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   autoJoinAudioOnly: 1
   useProximityVoice: 1
-  audibleRange: 36
-  conversationalRange: 12
+  audibleRange: 72
+  conversationalRange: 24
   audioFadeModelExponent: 1
   positionUpdateInterval: 0.1
   localVoiceTransform: {fileID: 0}
