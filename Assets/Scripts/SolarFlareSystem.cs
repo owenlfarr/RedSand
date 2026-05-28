@@ -88,6 +88,8 @@ public class SolarFlareSystem : NetworkBehaviour
     private Vector3 shakeOffset = Vector3.zero;
     private PlayerController playerController;
     private CompassPointer compassPointer;
+    private ulong activeRepairClientId = ulong.MaxValue;
+    private bool hasLocalRepairRequest = false;
 
     public NetworkVariable<bool> IsFlareActiveNetwork = new NetworkVariable<bool>(
         false,
@@ -105,6 +107,8 @@ public class SolarFlareSystem : NetworkBehaviour
         NetworkVariableWritePermission.Server);
 
     private const KeyCode INTERACTION_KEY = KeyCode.E;
+    private const string REPAIR_COMPASS_LABEL = "REPAIR NEEDED";
+    private const ulong INVALID_CLIENT_ID = ulong.MaxValue;
 
     void Awake()
     {
@@ -117,6 +121,58 @@ public class SolarFlareSystem : NetworkBehaviour
             Destroy(gameObject);
             return;
         }
+    }
+
+    private void EnsureCompassPointerReference()
+    {
+        if (compassPointer == null)
+        {
+            compassPointer = FindObjectOfType<CompassPointer>();
+        }
+    }
+
+    private void ApplyRepairCompassTarget()
+    {
+        if (fixPointTransform == null)
+        {
+            return;
+        }
+
+        EnsureCompassPointerReference();
+        if (compassPointer == null)
+        {
+            return;
+        }
+
+        compassPointer.SetTarget(fixPointTransform, REPAIR_COMPASS_LABEL, true);
+    }
+
+    private void ClearRepairCompassTargetIfActive()
+    {
+        EnsureCompassPointerReference();
+        if (compassPointer == null)
+        {
+            return;
+        }
+
+        if (!compassPointer.HasTargetOverride(fixPointTransform, REPAIR_COMPASS_LABEL))
+        {
+            return;
+        }
+
+        compassPointer.ClearTargetOverride();
+        Debug.Log("<color=green>[Solar Flare]</color> Compass returned to default target");
+    }
+
+    private void SyncRepairCompassWithFlareState()
+    {
+        if (isFlareActive)
+        {
+            ApplyRepairCompassTarget();
+            return;
+        }
+
+        ClearRepairCompassTargetIfActive();
     }
 
     void Start()
@@ -177,11 +233,17 @@ public class SolarFlareSystem : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        hasLocalRepairRequest = false;
+        IsFlareActiveNetwork.OnValueChanged += OnFlareActiveNetworkChanged;
+        IsRepairingNetwork.OnValueChanged += OnRepairingNetworkChanged;
+        RepairProgressNetwork.OnValueChanged += OnRepairProgressNetworkChanged;
+
         if (IsServer)
         {
             isFlareActive = false;
             isRepairing = false;
             repairProgress = 0f;
+            activeRepairClientId = INVALID_CLIENT_ID;
             nextCheckTime = Time.time + checkInterval;
             IsFlareActiveNetwork.Value = false;
             IsRepairingNetwork.Value = false;
@@ -189,6 +251,14 @@ public class SolarFlareSystem : NetworkBehaviour
         }
 
         SyncLocalStateFromNetwork();
+        SyncRepairCompassWithFlareState();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        IsFlareActiveNetwork.OnValueChanged -= OnFlareActiveNetworkChanged;
+        IsRepairingNetwork.OnValueChanged -= OnRepairingNetworkChanged;
+        RepairProgressNetwork.OnValueChanged -= OnRepairProgressNetworkChanged;
     }
 
     void Update()
@@ -202,6 +272,7 @@ public class SolarFlareSystem : NetworkBehaviour
                 CheckPlayerProximityToFixPoint();
                 HandleRepair();
                 SyncLocalStateFromNetwork();
+                SyncRepairCompassWithFlareState();
                 ApplyShakeToCamera();
                 return;
             }
@@ -219,6 +290,7 @@ public class SolarFlareSystem : NetworkBehaviour
             }
 
             PushNetworkStateFromLocal();
+            SyncRepairCompassWithFlareState();
             ApplyShakeToCamera();
             return;
         }
@@ -233,6 +305,7 @@ public class SolarFlareSystem : NetworkBehaviour
             CheckPlayerProximityToFixPoint();
             HandleRepair();
         }
+        SyncRepairCompassWithFlareState();
 
         ApplyShakeToCamera();
     }
@@ -282,6 +355,8 @@ public class SolarFlareSystem : NetworkBehaviour
         isFlareActive = true;
         isRepairing = false;
         repairProgress = 0f;
+        hasLocalRepairRequest = false;
+        activeRepairClientId = INVALID_CLIENT_ID;
 
         if (IsNetworkSessionActive())
         {
@@ -297,11 +372,7 @@ public class SolarFlareSystem : NetworkBehaviour
             TriggerSolarFlareClientRpc();
         }
 
-        if (compassPointer != null && fixPointTransform != null)
-        {
-            compassPointer.SetTarget(fixPointTransform, "REPAIR NEEDED");
-            Debug.Log("<color=orange>[Solar Flare]</color> Compass now pointing to fix point");
-        }
+        ApplyRepairCompassTarget();
 
         if (!IsNetworkSessionActive())
         {
@@ -464,6 +535,37 @@ public class SolarFlareSystem : NetworkBehaviour
     {
         if (playerTransform == null || fixPointTransform == null) return;
 
+        if (!isFlareActive)
+        {
+            if (isPlayerNearFixPoint || isRepairing || repairProgress > 0f)
+            {
+                isPlayerNearFixPoint = false;
+                isRepairing = false;
+                repairProgress = 0f;
+
+                if (interactionPromptText != null)
+                {
+                    interactionPromptText.gameObject.SetActive(false);
+                }
+
+                if (repairProgressBar != null)
+                {
+                    repairProgressBar.gameObject.SetActive(false);
+                    repairProgressBar.fillAmount = 0f;
+                }
+
+                return;
+            }
+
+            if (isRepairing)
+            {
+                isRepairing = false;
+                repairProgress = 0f;
+            }
+
+            return;
+        }
+
         float distance = Vector3.Distance(playerTransform.position, fixPointTransform.position);
 
         if (distance <= interactionDistance)
@@ -507,19 +609,30 @@ public class SolarFlareSystem : NetworkBehaviour
 
     void HandleRepair()
     {
+        if (!isFlareActive)
+        {
+            return;
+        }
         if (!isPlayerNearFixPoint)
         {
-            if (IsNetworkSessionActive() && isRepairing)
+            if (IsNetworkSessionActive())
             {
                 if (IsServer)
                 {
-                    isRepairing = false;
-                    IsRepairingNetwork.Value = false;
-                    RepairProgressNetwork.Value = 0f;
+                    ulong localClientId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : INVALID_CLIENT_ID;
+                    if (isRepairing && activeRepairClientId == localClientId)
+                    {
+                        isRepairing = false;
+                        IsRepairingNetwork.Value = false;
+                        RepairProgressNetwork.Value = 0f;
+                        repairProgress = 0f;
+                        activeRepairClientId = INVALID_CLIENT_ID;
+                    }
                 }
-                else
+                else if (hasLocalRepairRequest)
                 {
                     SetRepairingServerRpc(false);
+                    hasLocalRepairRequest = false;
                 }
             }
 
@@ -534,12 +647,18 @@ public class SolarFlareSystem : NetworkBehaviour
                 {
                     if (IsServer)
                     {
-                        isRepairing = true;
-                        IsRepairingNetwork.Value = true;
+                        ulong localClientId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : INVALID_CLIENT_ID;
+                        if (activeRepairClientId == INVALID_CLIENT_ID || activeRepairClientId == localClientId)
+                        {
+                            isRepairing = true;
+                            IsRepairingNetwork.Value = true;
+                            activeRepairClientId = localClientId;
+                        }
                     }
                     else
                     {
                         SetRepairingServerRpc(true);
+                        hasLocalRepairRequest = true;
                     }
                 }
             }
@@ -547,12 +666,20 @@ public class SolarFlareSystem : NetworkBehaviour
             {
                 if (IsServer)
                 {
-                    isRepairing = false;
-                    IsRepairingNetwork.Value = false;
+                    ulong localClientId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : INVALID_CLIENT_ID;
+                    if (activeRepairClientId == localClientId)
+                    {
+                        isRepairing = false;
+                        IsRepairingNetwork.Value = false;
+                        RepairProgressNetwork.Value = 0f;
+                        repairProgress = 0f;
+                        activeRepairClientId = INVALID_CLIENT_ID;
+                    }
                 }
                 else
                 {
                     SetRepairingServerRpc(false);
+                    hasLocalRepairRequest = false;
                 }
             }
 
@@ -697,11 +824,7 @@ public class SolarFlareSystem : NetworkBehaviour
             repairProgressBar.fillAmount = 0f;
         }
 
-        if (compassPointer != null)
-        {
-            compassPointer.ClearTargetOverride();
-            Debug.Log("<color=green>[Solar Flare]</color> Compass returned to default target");
-        }
+        ClearRepairCompassTargetIfActive();
     }
 
     private void CheckForSolarFlareServer()
@@ -759,16 +882,29 @@ public class SolarFlareSystem : NetworkBehaviour
             return;
         }
 
-        if (!IsPlayerNearFixPoint(serverRpcParams.Receive.SenderClientId))
+        ulong senderClientId = serverRpcParams.Receive.SenderClientId;
+        if (value)
         {
-            Debug.LogWarning($"<color=red>[Solar Flare]</color> Ignored repair request from client {serverRpcParams.Receive.SenderClientId} because they are not near the fix point.");
-            return;
-        }
+            if (!IsPlayerNearFixPoint(senderClientId))
+            {
+                Debug.LogWarning($"<color=red>[Solar Flare]</color> Ignored repair request from client {senderClientId} because they are not near the fix point.");
+                return;
+            }
 
-        isRepairing = value;
-        IsRepairingNetwork.Value = value;
-        if (!value)
+            if (activeRepairClientId != INVALID_CLIENT_ID && activeRepairClientId != senderClientId)
+            {
+                return;
+            }
+
+            activeRepairClientId = senderClientId;
+            isRepairing = true;
+            IsRepairingNetwork.Value = true;
+        }
+        else if (activeRepairClientId == senderClientId)
         {
+            activeRepairClientId = INVALID_CLIENT_ID;
+            isRepairing = false;
+            IsRepairingNetwork.Value = false;
             RepairProgressNetwork.Value = 0f;
             repairProgress = 0f;
         }
@@ -777,10 +913,7 @@ public class SolarFlareSystem : NetworkBehaviour
     [ClientRpc]
     private void TriggerSolarFlareClientRpc()
     {
-        if (compassPointer != null && fixPointTransform != null)
-        {
-            compassPointer.SetTarget(fixPointTransform, "REPAIR NEEDED");
-        }
+        ApplyRepairCompassTarget();
 
         StartCoroutine(SolarFlareSequence());
     }
@@ -820,11 +953,7 @@ public class SolarFlareSystem : NetworkBehaviour
             repairProgressBar.fillAmount = 0f;
         }
 
-        if (compassPointer != null)
-        {
-            compassPointer.ClearTargetOverride();
-            Debug.Log("<color=green>[Solar Flare]</color> Compass returned to default target");
-        }
+        ClearRepairCompassTargetIfActive();
 
         isFlareActive = false;
         isRepairing = false;
@@ -914,6 +1043,39 @@ public class SolarFlareSystem : NetworkBehaviour
         isRepairing = IsRepairingNetwork.Value;
         repairProgress = RepairProgressNetwork.Value;
 
+        UpdateRepairUIFromState();
+        SyncRepairCompassWithFlareState();
+    }
+
+    private void OnFlareActiveNetworkChanged(bool previousValue, bool currentValue)
+    {
+        isFlareActive = currentValue;
+        SyncRepairCompassWithFlareState();
+
+        if (!currentValue)
+        {
+            isRepairing = false;
+            repairProgress = 0f;
+            hasLocalRepairRequest = false;
+            isPlayerNearFixPoint = false;
+            UpdateRepairUIFromState();
+        }
+    }
+
+    private void OnRepairingNetworkChanged(bool previousValue, bool currentValue)
+    {
+        isRepairing = currentValue;
+        if (!currentValue)
+        {
+            hasLocalRepairRequest = false;
+        }
+
+        UpdateRepairUIFromState();
+    }
+
+    private void OnRepairProgressNetworkChanged(float previousValue, float currentValue)
+    {
+        repairProgress = currentValue;
         UpdateRepairUIFromState();
     }
 

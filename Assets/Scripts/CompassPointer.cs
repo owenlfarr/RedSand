@@ -38,6 +38,8 @@ public class CompassPointer : MonoBehaviour
     private string defaultLabel = "POWER";
     private string overrideLabel = "";
     private float repairPercentage = 0f;
+    private bool overrideRequiresSurface = false;
+    private readonly Collider[] bunkerCheckResults = new Collider[10];
 
     void Start()
     {
@@ -65,19 +67,42 @@ public class CompassPointer : MonoBehaviour
         Debug.Log("<color=green>[Compass]</color> Compass system initialized");
     }
 
-    public void SetTarget(Transform newTarget, string label = "")
+    public void SetTarget(Transform newTarget, string label = "", bool requireOutsideBunker = false)
     {
+        bool targetChanged = overrideTarget != newTarget;
+        bool labelChanged = overrideLabel != label;
+        bool visibilityChanged = overrideRequiresSurface != requireOutsideBunker;
         overrideTarget = newTarget;
         overrideLabel = label;
-        repairPercentage = 0f;
+        overrideRequiresSurface = requireOutsideBunker;
+
+        if (targetChanged || labelChanged)
+        {
+            repairPercentage = 0f;
+        }
         UpdateLabel();
-        Debug.Log($"<color=cyan>[Compass]</color> Target override set to: {(newTarget != null ? newTarget.name : "null")} with label: {label}");
+
+        if (targetChanged || labelChanged || visibilityChanged)
+        {
+            Debug.Log($"<color=cyan>[Compass]</color> Target override set to: {(newTarget != null ? newTarget.name : "null")} with label: {label} (outside bunker only: {requireOutsideBunker})");
+        }
+    }
+
+    public bool HasTargetOverride(Transform target, string label = "")
+    {
+        if (overrideTarget != target || overrideTarget == null)
+        {
+            return false;
+        }
+
+        return string.IsNullOrEmpty(label) || overrideLabel == label;
     }
 
     public void ClearTargetOverride()
     {
         overrideTarget = null;
         overrideLabel = "";
+        overrideRequiresSurface = false;
         repairPercentage = 0f;
         UpdateLabel();
         Debug.Log("<color=cyan>[Compass]</color> Target override cleared, returning to default target");
@@ -101,6 +126,11 @@ public class CompassPointer : MonoBehaviour
 
     void UpdateVisibility()
     {
+        if (overrideTarget != null && overrideRequiresSurface)
+        {
+            shouldShow = IsLocalPlayerOutsideBunker();
+            return;
+        }
         if (onlyShowOnSurface && oxygenSystem != null)
         {
             shouldShow = !oxygenSystem.IsInBunker();
@@ -148,12 +178,6 @@ public class CompassPointer : MonoBehaviour
         if (compassLabel == null)
             return;
 
-        if (IsPowerOutageActive())
-        {
-            compassLabel.text = "POWER";
-            return;
-        }
-
         if (overrideTarget != null && !string.IsNullOrEmpty(overrideLabel))
         {
             if (repairPercentage > 0f)
@@ -165,6 +189,10 @@ public class CompassPointer : MonoBehaviour
                 compassLabel.text = overrideLabel;
             }
         }
+        else if (IsPowerOutageActive())
+        {
+            compassLabel.text = "POWER";
+        }
         else
         {
             compassLabel.text = defaultLabel;
@@ -173,12 +201,17 @@ public class CompassPointer : MonoBehaviour
 
     private Transform GetActiveTarget()
     {
+        if (overrideTarget != null)
+        {
+            return overrideTarget;
+        }
+
         if (IsPowerOutageActive() && PowerSystem.Instance.powerBoxTransform != null)
         {
             return PowerSystem.Instance.powerBoxTransform;
         }
 
-        return overrideTarget != null ? overrideTarget : defaultTarget;
+        return defaultTarget;
     }
 
     private bool IsPowerOutageActive()
@@ -248,5 +281,29 @@ public class CompassPointer : MonoBehaviour
             defaultTarget = powerTarget;
             Debug.Log($"<color=cyan>[Compass]</color> Power target set to: {powerTarget.name} at {powerTarget.position}");
         }
+    }
+
+    private bool IsLocalPlayerOutsideBunker()
+    {
+        if (oxygenSystem != null)
+        {
+            return !oxygenSystem.IsInBunker();
+        }
+
+        if (playerTransform == null)
+        {
+            return false;
+        }
+
+        int hitCount = Physics.OverlapSphereNonAlloc(playerTransform.position, 1f, bunkerCheckResults);
+        for (int i = 0; i < hitCount; i++)
+        {
+            if (bunkerCheckResults[i] != null && bunkerCheckResults[i].CompareTag("Bunker"))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
