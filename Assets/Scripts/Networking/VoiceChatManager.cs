@@ -24,7 +24,11 @@ namespace Networking
         private bool loggedIn;
         private bool initializingOrLoggingIn;   // Guard against concurrent EnsureReadyAsync calls.
         private string currentChannel = string.Empty;
+        private string currentRadioChannel = string.Empty;
         private float nextPositionSyncTime;
+        private float nextRadioStationScanTime;
+        private bool wantsRadioBroadcast;
+        private bool radioBroadcasting;
         private Channel3DProperties currentChannel3DProperties;
 
         public string CurrentChannel => currentChannel;
@@ -45,10 +49,13 @@ namespace Networking
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             localVoiceTransform = null;
+            nextRadioStationScanTime = 0f;
         }
 
         private void Update()
         {
+            TryAttachRadioStationToSceneObject();
+
             if (!useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentChannel))
             {
                 return;
@@ -154,12 +161,18 @@ namespace Networking
                     try
                     {
                         await VivoxService.Instance.LeaveChannelAsync(currentChannel);
+                        if (!string.IsNullOrEmpty(currentRadioChannel))
+                        {
+                            await VivoxService.Instance.LeaveChannelAsync(currentRadioChannel);
+                        }
                     }
                     catch (Exception leaveEx)
                     {
                         Debug.LogWarning($"[VoiceChat] Leave previous channel failed (continuing): {leaveEx.Message}");
                     }
+
                     currentChannel = string.Empty;
+                    currentRadioChannel = string.Empty;
                 }
 
                 ChatCapability capability = autoJoinAudioOnly ? ChatCapability.AudioOnly : ChatCapability.TextAndAudio;
@@ -173,6 +186,17 @@ namespace Networking
                         AudioFadeModel.InverseByDistance);
 
                     await VivoxService.Instance.JoinPositionalChannelAsync(normalized, capability, currentChannel3DProperties);
+                    try
+                    {
+                        currentRadioChannel = $"{normalized}_RADIO";
+                        await VivoxService.Instance.JoinGroupChannelAsync(currentRadioChannel, capability);
+                    }
+                    catch (Exception radioEx)
+                    {
+                        currentRadioChannel = string.Empty;
+                        Debug.LogWarning($"[VoiceChat] Radio channel join failed; proximity voice still active: {radioEx.Message}");
+                    }
+
                     await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, normalized);
                     await UpdateLocalPositionSafelyAsync();
                 }
@@ -204,17 +228,75 @@ namespace Networking
             }
 
             string channelToLeave = currentChannel;
+            string radioChannelToLeave = currentRadioChannel;
             currentChannel = string.Empty;
+            currentRadioChannel = string.Empty;
+            wantsRadioBroadcast = false;
+            radioBroadcasting = false;
 
             try
             {
                 await VivoxService.Instance.LeaveChannelAsync(channelToLeave);
+                if (!string.IsNullOrEmpty(radioChannelToLeave))
+                {
+                    await VivoxService.Instance.LeaveChannelAsync(radioChannelToLeave);
+                }
                 Debug.Log($"[VoiceChat] Left channel: {channelToLeave}");
             }
             catch (Exception ex)
             {
                 lastVivoxError = ex.Message;
                 Debug.LogWarning($"[VoiceChat] Leave failed: {ex.Message}");
+            }
+        }
+
+        public async void BeginRadioBroadcast()
+        {
+            if (!useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentRadioChannel) || radioBroadcasting)
+            {
+                return;
+            }
+
+            wantsRadioBroadcast = true;
+            radioBroadcasting = true;
+            try
+            {
+                await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, currentRadioChannel);
+                if (!wantsRadioBroadcast && !string.IsNullOrEmpty(currentChannel))
+                {
+                    await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, currentChannel);
+                    radioBroadcasting = false;
+                    return;
+                }
+
+                Debug.Log("[VoiceChat] Radio broadcast started.");
+            }
+            catch (Exception ex)
+            {
+                wantsRadioBroadcast = false;
+                radioBroadcasting = false;
+                Debug.LogWarning($"[VoiceChat] Radio broadcast start failed: {ex.Message}");
+            }
+        }
+
+        public async void EndRadioBroadcast()
+        {
+            wantsRadioBroadcast = false;
+
+            if (!useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentChannel) || !radioBroadcasting)
+            {
+                return;
+            }
+
+            try
+            {
+                await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, currentChannel);
+                radioBroadcasting = false;
+                Debug.Log("[VoiceChat] Radio broadcast ended.");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[VoiceChat] Radio broadcast end failed: {ex.Message}");
             }
         }
 
@@ -269,6 +351,25 @@ namespace Networking
             }
 
             return null;
+        }
+
+        private void TryAttachRadioStationToSceneObject()
+        {
+            if (Time.time < nextRadioStationScanTime)
+            {
+                return;
+            }
+
+            nextRadioStationScanTime = Time.time + 1f;
+
+            GameObject radioObject = GameObject.Find("Radio");
+            if (radioObject == null || radioObject.GetComponent<global::RadioBroadcastStation>() != null)
+            {
+                return;
+            }
+
+            radioObject.AddComponent<global::RadioBroadcastStation>();
+            Debug.Log("[VoiceChat] Radio broadcast station attached to scene object named Radio.");
         }
     }
 }
