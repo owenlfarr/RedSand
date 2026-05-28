@@ -83,7 +83,7 @@ public class RadioBroadcastStation : MonoBehaviour
         interactionPromptText.alignment = TextAlignmentOptions.Center;
         interactionPromptText.fontSize = 28f;
         interactionPromptText.color = Color.white;
-        interactionPromptText.text = "Press E to Speak";
+        interactionPromptText.text = "Press E to Broadcast";
 
         RectTransform rect = textObject.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -155,7 +155,7 @@ public class RadioBroadcastStation : MonoBehaviour
         else
         {
             StopBroadcasting();
-            ShowPrompt("Press E to Speak");
+            ShowPrompt("Press E to Broadcast");
         }
     }
 
