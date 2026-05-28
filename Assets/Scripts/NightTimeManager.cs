@@ -124,7 +124,12 @@ public class NightTimeManager : NetworkBehaviour
 
         if (!IsServer)
         {
+            // Pull authoritative values from server.
             SyncLocalStateFromNetwork();
+
+            // Derive CurrentMinute locally for smooth UI updates between network pushes.
+            float elapsedInCurrentHour = totalElapsedTime % secondsPerHour;
+            CurrentMinute = Mathf.FloorToInt((elapsedInCurrentHour / secondsPerHour) * 60f);
             return;
         }
 

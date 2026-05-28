@@ -163,7 +163,7 @@ PlayerSettings:
   androidMaxAspectRatio: 2.1
   androidMinAspectRatio: 1
   applicationIdentifier:
-    Standalone: com.DefaultCompany.My-project--1-
+    Standalone: com.DefaultCompany.Red-Sand
   buildNumber:
     Standalone: 0
     VisionOS: 0

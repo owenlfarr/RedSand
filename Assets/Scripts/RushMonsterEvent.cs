@@ -113,6 +113,17 @@ public class RushMonsterEvent : NetworkBehaviour
         RefreshLocalPlayerReference();
         rushUI = FindObjectOfType<RushMonsterUI>();
 
+        DiscoverLights();
+
+        StoreOriginalLightStates();
+        nextCheckTime = Time.time + checkInterval;
+
+        Debug.Log("<color=purple>[Rush Monster]</color> System initialized");
+    }
+
+    /// <summary>Finds the scene lights by name if the arrays are empty.</summary>
+    void DiscoverLights()
+    {
         if (whiteLights == null || whiteLights.Length == 0)
         {
             GameObject whiteLightParent = GameObject.Find("Lights White");
@@ -130,16 +141,16 @@ public class RushMonsterEvent : NetworkBehaviour
                 redLights = redLightParent.GetComponentsInChildren<Light>();
             }
         }
-
-        StoreOriginalLightStates();
-        nextCheckTime = Time.time + checkInterval;
-
-        Debug.Log("<color=purple>[Rush Monster]</color> System initialized");
     }
 
     public override void OnNetworkSpawn()
     {
         base.OnNetworkSpawn();
+
+        // Re-run light discovery so clients have valid references after network spawn.
+        DiscoverLights();
+        StoreOriginalLightStates();
+
         if (IsServer)
         {
             IsEventActiveNetwork.Value = isEventActive;

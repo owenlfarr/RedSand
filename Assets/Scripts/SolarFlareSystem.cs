@@ -432,25 +432,22 @@ public class SolarFlareSystem : NetworkBehaviour
 
     void DisableAllSystems()
     {
+        // Only hide the interaction prompts — do NOT disable the components.
+        // RadarSystem and DefenseSystem already gate access via IsFlareActiveNetwork.Value,
+        // so disabling the components would break their Update() loops on all clients.
         if (radarSystem != null)
         {
             radarSystem.ForceHidePrompt();
-            radarSystem.enabled = false;
-            Debug.Log("<color=red>[Solar Flare]</color> Radar disabled");
+            Debug.Log("<color=red>[Solar Flare]</color> Radar locked out");
         }
 
         if (defenseSystem != null)
         {
             defenseSystem.ForceHidePrompt();
-            defenseSystem.enabled = false;
-            Debug.Log("<color=red>[Solar Flare]</color> Defense disabled");
+            Debug.Log("<color=red>[Solar Flare]</color> Defense locked out");
         }
 
-        if (powerSystem != null)
-        {
-            powerSystem.enabled = false;
-            Debug.Log("<color=red>[Solar Flare]</color> Power system disabled");
-        }
+        // PowerSystem does not need to be disabled; it independently checks flare state.
 
         foreach (Light light in bunkerLights)
         {
@@ -796,20 +793,8 @@ public class SolarFlareSystem : NetworkBehaviour
             audioSource.PlayOneShot(repairCompleteSound);
         }
 
-        if (radarSystem != null)
-        {
-            radarSystem.enabled = true;
-        }
-
-        if (defenseSystem != null)
-        {
-            defenseSystem.enabled = true;
-        }
-
-        if (powerSystem != null)
-        {
-            powerSystem.enabled = true;
-        }
+        // Do NOT re-enable components — they were never disabled in the multiplayer path.
+        // Systems gate access via IsFlareActiveNetwork.Value which is already cleared by the server.
 
         foreach (Light light in bunkerLights)
         {

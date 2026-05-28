@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -57,6 +58,12 @@ namespace Networking
         private bool hasPendingHostAllocation;
         private float loadingAnimTimer;
         private int loadingDots;
+        private int nextManualSpawnIndex;
+        private Coroutine spawnPlayersAfterLoadCoroutine;
+
+        // Stored so we can null it during the lobby (prevents player spawning in MainMenu)
+        // and restore it before the game scene loads.
+        private GameObject _lobbyPlayerPrefab;
 
         public bool HasActiveHostParty
         {
@@ -104,6 +111,18 @@ namespace Networking
         private void OnDisable()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.SceneManager != null)
+            {
+                nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
+            }
+
+            if (spawnPlayersAfterLoadCoroutine != null)
+            {
+                StopCoroutine(spawnPlayersAfterLoadCoroutine);
+                spawnPlayersAfterLoadCoroutine = null;
+            }
         }
 
         private void OnGUI()
@@ -218,11 +237,42 @@ namespace Networking
                 }
 
                 transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, relayConnectionType));
-                pendingHostAllocation = allocation;
-                hasPendingHostAllocation = true;
 
-                statusText = $"Party created. Join Code: {latestJoinCode}. Waiting for host to start the game.";
+                // Null out the player prefab BEFORE StartHost so NGO does not auto-spawn
+                // any player objects in the MainMenu scene (which has no floor — the void).
+                // We restore it in LoadMultiplayerSceneAsHost() right before the game loads.
+                if (nm.NetworkConfig.PlayerPrefab != null)
+                {
+                    _lobbyPlayerPrefab = nm.NetworkConfig.PlayerPrefab;
+                    nm.NetworkConfig.PlayerPrefab = null;
+                }
+
+                // StartHost IMMEDIATELY so the Relay server has an active host endpoint.
+                // Without this, joining clients get "invalid code" because the Relay has nobody to route to.
+                if (!nm.StartHost())
+                {
+                    // Restore prefab on failure.
+                    if (_lobbyPlayerPrefab != null)
+                    {
+                        nm.NetworkConfig.PlayerPrefab = _lobbyPlayerPrefab;
+                    }
+                    statusText = "StartHost failed — check Relay / NetworkManager settings.";
+                    return;
+                }
+
+                // Allocation is now live — clear the pending state.
+                pendingHostAllocation = allocation;
+                hasPendingHostAllocation = false;
+
+                statusText = $"Lobby ready! Code: {latestJoinCode}";
                 lobbyCreated = true;
+
+                // Subscribe once — unsubscribe first to prevent duplicates if CreateParty is called again.
+                NetworkManager.Singleton.OnClientConnectedCallback -= OnLobbyClientConnected;
+                NetworkManager.Singleton.OnClientDisconnectCallback -= OnLobbyClientDisconnected;
+                NetworkManager.Singleton.OnClientConnectedCallback += OnLobbyClientConnected;
+                NetworkManager.Singleton.OnClientDisconnectCallback += OnLobbyClientDisconnected;
+
                 _ = TryJoinVoiceSafely(latestJoinCode);
                 SetLobbyUIState(true);
                 RefreshLobbyCodeUI();
@@ -246,13 +296,18 @@ namespace Networking
             }
 
             var nm = NetworkManager.Singleton;
-            if (nm != null && !nm.IsHost)
+
+            // Host is started during CreateParty() so it should already be hosting.
+            // TryStartPendingHost is a safety net in case the flow was called out of order.
+            if (nm == null || !nm.IsHost)
             {
                 if (!TryStartPendingHost(nm))
                 {
                     RefreshLobbyCodeUI();
                     return;
                 }
+
+                nm = NetworkManager.Singleton;
             }
 
             if (!LoadMultiplayerSceneAsHost(nm))
@@ -279,7 +334,10 @@ namespace Networking
                     return;
                 }
 
-                if (string.IsNullOrWhiteSpace(joinCode))
+                // Normalise the code exactly as the host stored it.
+                string normalizedCode = (joinCode ?? string.Empty).Trim().ToUpperInvariant();
+
+                if (string.IsNullOrWhiteSpace(normalizedCode))
                 {
                     statusText = "Join code is empty.";
                     return;
@@ -291,19 +349,21 @@ namespace Networking
                     return;
                 }
 
+                // Tear down any stale connection before starting a new client.
                 if (nm.IsListening)
                 {
                     nm.Shutdown();
+                    await System.Threading.Tasks.Task.Delay(100);
                 }
 
                 JoinAllocation joinAllocation;
                 try
                 {
-                    joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode.Trim().ToUpperInvariant());
+                    joinAllocation = await RelayService.Instance.JoinAllocationAsync(normalizedCode);
                 }
                 catch (Exception ex)
                 {
-                    statusText = $"Invalid join code / join failed: {ex.Message}";
+                    statusText = $"Invalid join code: {ex.Message}";
                     return;
                 }
 
@@ -311,13 +371,20 @@ namespace Networking
 
                 if (!nm.StartClient())
                 {
-                    statusText = "StartClient failed.";
+                    statusText = "StartClient failed. Try again.";
                     RefreshLobbyCodeUI();
                     return;
                 }
 
-                statusText = "Joined party. Waiting for host scene sync...";
-                _ = TryJoinVoiceSafely(joinCode);
+                // Keep astronaut visuals updated as others connect.
+                // Unsubscribe first to prevent duplicates if JoinParty is called multiple times.
+                nm.OnClientConnectedCallback -= OnLobbyClientConnected;
+                nm.OnClientDisconnectCallback -= OnLobbyClientDisconnected;
+                nm.OnClientConnectedCallback += OnLobbyClientConnected;
+                nm.OnClientDisconnectCallback += OnLobbyClientDisconnected;
+
+                statusText = "Joined! Waiting for host to start...";
+                _ = TryJoinVoiceSafely(normalizedCode);
                 RefreshLobbyCodeUI();
             }
             catch (Exception ex)
@@ -355,9 +422,15 @@ namespace Networking
         public void BackFromUI()
         {
             var nm = NetworkManager.Singleton;
-            if (nm != null && nm.IsListening)
+            if (nm != null)
             {
-                nm.Shutdown();
+                nm.OnClientConnectedCallback -= OnLobbyClientConnected;
+                nm.OnClientDisconnectCallback -= OnLobbyClientDisconnected;
+
+                if (nm.IsListening)
+                {
+                    nm.Shutdown();
+                }
             }
 
             latestJoinCode = string.Empty;
@@ -369,6 +442,16 @@ namespace Networking
             _ = TryLeaveVoiceSafely();
             SetLobbyUIState(false);
             RefreshLobbyCodeUI();
+        }
+
+        private void OnLobbyClientConnected(ulong clientId)
+        {
+            UpdateLobbyAstronautVisuals();
+        }
+
+        private void OnLobbyClientDisconnected(ulong clientId)
+        {
+            UpdateLobbyAstronautVisuals();
         }
 
         private async Task<bool> EnsureServicesReady()
@@ -419,11 +502,8 @@ namespace Networking
                 return false;
             }
 
-            if (nm.NetworkConfig == null || nm.NetworkConfig.PlayerPrefab == null)
-            {
-                statusText = "Error: NetworkManager player prefab is missing.";
-                return false;
-            }
+            // Note: PlayerPrefab may be intentionally null during the lobby phase
+            // (we null it to prevent spawning in the MainMenu). Do not validate it here.
 
             return true;
         }
@@ -448,8 +528,120 @@ namespace Networking
                 return false;
             }
 
+            if (!RestoreGamePlayerPrefab(nm))
+            {
+                statusText = "Error: Network player prefab is missing.";
+                return false;
+            }
+
+            if (nm.SceneManager != null)
+            {
+                nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
+                nm.SceneManager.OnLoadEventCompleted += OnNetworkSceneLoadCompleted;
+            }
+
             nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
             return true;
+        }
+
+        private bool RestoreGamePlayerPrefab(NetworkManager nm)
+        {
+            if (nm == null || nm.NetworkConfig == null)
+            {
+                return false;
+            }
+
+            if (nm.NetworkConfig.PlayerPrefab == null && _lobbyPlayerPrefab != null)
+            {
+                nm.NetworkConfig.PlayerPrefab = _lobbyPlayerPrefab;
+                _lobbyPlayerPrefab = null;
+            }
+
+            return nm.NetworkConfig.PlayerPrefab != null;
+        }
+
+        private void OnNetworkSceneLoadCompleted(string sceneName, LoadSceneMode loadSceneMode, System.Collections.Generic.List<ulong> clientsCompleted, System.Collections.Generic.List<ulong> clientsTimedOut)
+        {
+            if (!string.Equals(sceneName, multiplayerSceneName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.SceneManager != null)
+            {
+                nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
+            }
+
+            if (nm == null || !nm.IsServer)
+            {
+                return;
+            }
+
+            if (spawnPlayersAfterLoadCoroutine != null)
+            {
+                StopCoroutine(spawnPlayersAfterLoadCoroutine);
+            }
+
+            spawnPlayersAfterLoadCoroutine = StartCoroutine(SpawnMissingPlayersAfterSceneLoad());
+        }
+
+        private IEnumerator SpawnMissingPlayersAfterSceneLoad()
+        {
+            yield return null;
+
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsServer || !RestoreGamePlayerPrefab(nm))
+            {
+                spawnPlayersAfterLoadCoroutine = null;
+                yield break;
+            }
+
+            foreach (ulong clientId in nm.ConnectedClientsIds)
+            {
+                if (!nm.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject != null)
+                {
+                    continue;
+                }
+
+                var player = Instantiate(nm.NetworkConfig.PlayerPrefab);
+                ApplyManualSpawnPoint(player.transform);
+
+                var networkObject = player.GetComponent<NetworkObject>();
+                if (networkObject == null)
+                {
+                    Debug.LogError("[RelayPartyManager] Network player prefab is missing a NetworkObject component.");
+                    Destroy(player);
+                    continue;
+                }
+
+                networkObject.SpawnAsPlayerObject(clientId, true);
+                Debug.Log($"[RelayPartyManager] Spawned missing player object for client {clientId} after scene load.");
+            }
+
+            spawnPlayersAfterLoadCoroutine = null;
+        }
+
+        private void ApplyManualSpawnPoint(Transform playerTransform)
+        {
+            if (playerTransform == null)
+            {
+                return;
+            }
+
+            var spawnPoints = UnityEngine.Object.FindObjectsOfType<NetworkStartPosition>(true);
+            if (spawnPoints == null || spawnPoints.Length == 0)
+            {
+                return;
+            }
+
+            var spawnPoint = spawnPoints[nextManualSpawnIndex % spawnPoints.Length];
+            nextManualSpawnIndex++;
+
+            if (spawnPoint != null)
+            {
+                playerTransform.SetPositionAndRotation(spawnPoint.transform.position, spawnPoint.transform.rotation);
+            }
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -506,19 +698,21 @@ namespace Networking
 
             if (!hasPendingHostAllocation || pendingHostAllocation == null)
             {
-                statusText = "No pending lobby allocation. Create Lobby first.";
+                statusText = "No pending lobby. Create a lobby first.";
                 return false;
             }
 
+            // Shut down any stale transport state before starting host.
             if (nm.IsListening)
             {
                 nm.Shutdown();
             }
 
             transport.SetRelayServerData(AllocationUtils.ToRelayServerData(pendingHostAllocation, relayConnectionType));
+
             if (!nm.StartHost())
             {
-                statusText = "StartHost failed.";
+                statusText = "StartHost failed — check Relay allocation and Unity project settings.";
                 return false;
             }
 
@@ -882,12 +1076,31 @@ namespace Networking
 
         private void UpdateLobbyAstronautVisuals()
         {
-            int playerCount = GetLobbyPlayerCount();
+            var nm = NetworkManager.Singleton;
+            bool isConnected = nm != null && nm.IsListening;
+
+            // Clients always occupy slot 1 themselves.
+            // Host reads the true connected count from NetworkManager.
+            int playerCount = 1;
+            if (isConnected)
+            {
+                if (nm.IsHost && nm.ConnectedClientsIds != null)
+                {
+                    playerCount = Mathf.Clamp(nm.ConnectedClientsIds.Count, 1, 3);
+                }
+                else if (!nm.IsHost && nm.IsClient)
+                {
+                    // Clients can't read ConnectedClientsIds accurately before the game scene;
+                    // treat any active connection as at least 2 players (host + self).
+                    playerCount = 2;
+                }
+            }
+
             string localName = GetLocalUserName();
 
             SetAstronautSlot(player1Visual, player1NameText, playerCount >= 1, localName);
-            SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, "Player2");
-            SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, "Player3");
+            SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, "Player 2");
+            SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, "Player 3");
         }
 
         private int GetLobbyPlayerCount()
@@ -896,7 +1109,6 @@ namespace Networking
             bool joinedAsClient = nm != null && nm.IsClient && !nm.IsHost && nm.IsListening;
             bool inLobbyState = lobbyCreated || HasActiveHostParty || joinedAsClient;
 
-            // Before lobby creation/join, always show only local player.
             if (!inLobbyState)
             {
                 return 1;
@@ -1099,14 +1311,9 @@ namespace Networking
                 return;
             }
 
-            try
-            {
-                await voiceChatManager.JoinLobbyVoiceAsync(channelCode);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[RelayPartyManager] Voice join failed (non-blocking): {ex.Message}");
-            }
+            // VoiceChatManager.JoinLobbyVoiceAsync handles all exceptions internally
+            // and is non-fatal — no wrapper needed.
+            await voiceChatManager.JoinLobbyVoiceAsync(channelCode);
         }
 
         private async Task TryLeaveVoiceSafely()
@@ -1116,14 +1323,8 @@ namespace Networking
                 return;
             }
 
-            try
-            {
-                await voiceChatManager.LeaveCurrentChannelAsync();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[RelayPartyManager] Voice leave failed (non-blocking): {ex.Message}");
-            }
+            // VoiceChatManager.LeaveCurrentChannelAsync handles all exceptions internally.
+            await voiceChatManager.LeaveCurrentChannelAsync();
         }
     }
 }
