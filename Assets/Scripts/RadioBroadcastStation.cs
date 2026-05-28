@@ -12,6 +12,7 @@ public class RadioBroadcastStation : MonoBehaviour
     public TextMeshProUGUI interactionPromptText;
 
     private const KeyCode InteractionKey = KeyCode.E;
+    private const string RadioObjectName = "Radio";
     private VoiceChatManager voiceChatManager;
     private Transform localCameraTransform;
     private bool isLookingAtRadio;
@@ -34,9 +35,21 @@ public class RadioBroadcastStation : MonoBehaviour
 
     private void Update()
     {
+        if (!IsRadioCube())
+        {
+            StopBroadcasting();
+            HidePrompt();
+            return;
+        }
+
         RefreshLocalCamera();
         CheckLookTarget();
         UpdateInteraction();
+    }
+
+    private bool IsRadioCube()
+    {
+        return string.Equals(gameObject.name, RadioObjectName, System.StringComparison.Ordinal);
     }
 
     private void EnsureCollider()
@@ -127,7 +140,7 @@ public class RadioBroadcastStation : MonoBehaviour
 
     private void UpdateInteraction()
     {
-        if (!isLookingAtRadio)
+        if (!isLookingAtRadio || !IsRadioCube())
         {
             StopBroadcasting();
             HidePrompt();
