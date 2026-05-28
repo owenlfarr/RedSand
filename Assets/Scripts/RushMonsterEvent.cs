@@ -262,6 +262,11 @@ public class RushMonsterEvent : NetworkBehaviour
             return;
         }
 
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
         if (Random.value <= eventChance)
         {
             StartCoroutine(ExecuteRushEventOffline());
@@ -315,12 +320,12 @@ public class RushMonsterEvent : NetworkBehaviour
         isEventActive = true;
         Debug.Log("<color=red>[Rush Monster]</color> EVENT TRIGGERED!");
 
-        if (rushApproachingSound != null)
+        if (IsLocalPlayerInBunker() && rushApproachingSound != null)
         {
             audioSource.PlayOneShot(rushApproachingSound);
         }
 
-        if (rushUI != null && isFirstEvent)
+        if (IsLocalPlayerInBunker() && rushUI != null && isFirstEvent)
         {
             rushUI.ShowWarning("something is coming...");
             isFirstEvent = false;
@@ -329,6 +334,19 @@ public class RushMonsterEvent : NetworkBehaviour
         yield return StartCoroutine(FlickerLightsLocal());
 
         bool playerHid = IsAnyLockerHiddenForLocalPlayer();
+        bool playerInBunker = IsLocalPlayerInBunker();
+        if (!playerInBunker)
+        {
+            if (rushUI != null)
+            {
+                rushUI.HideWarning();
+            }
+
+            RestoreLightsLocal();
+            isEventActive = false;
+            yield break;
+        }
+
         if (playerHid)
         {
             if (rushPassSound != null)
@@ -366,12 +384,7 @@ public class RushMonsterEvent : NetworkBehaviour
         isEventActive = true;
         IsEventActiveNetwork.Value = true;
 
-        if (rushApproachingSound != null)
-        {
-            audioSource.PlayOneShot(rushApproachingSound);
-        }
-
-        if (rushUI != null && isFirstEvent)
+        if (isFirstEvent)
         {
             RushWarningClientRpc("something is coming...");
             isFirstEvent = false;
@@ -393,8 +406,9 @@ public class RushMonsterEvent : NetworkBehaviour
                     continue;
                 }
 
+                bool inBunker = IsClientInBunkerServer(client.ClientId);
                 bool hidden = IsClientHiddenInAnyLocker(client.ClientId);
-                if (!hidden)
+                if (inBunker && !hidden)
                 {
                     playersToKill.Add(client.ClientId);
                 }
@@ -427,6 +441,16 @@ public class RushMonsterEvent : NetworkBehaviour
     [ClientRpc]
     private void RushWarningClientRpc(string message)
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
+        if (rushApproachingSound != null)
+        {
+            audioSource.PlayOneShot(rushApproachingSound);
+        }
+
         if (rushUI != null)
         {
             rushUI.ShowWarning(message);
@@ -436,12 +460,22 @@ public class RushMonsterEvent : NetworkBehaviour
     [ClientRpc]
     private void FlickerClientRpc()
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
         StartCoroutine(FlickerLightsLocal());
     }
 
     [ClientRpc]
     private void RushPassClientRpc()
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
         if (rushPassSound != null)
         {
             audioSource.PlayOneShot(rushPassSound);
@@ -456,6 +490,11 @@ public class RushMonsterEvent : NetworkBehaviour
     [ClientRpc]
     private void BlackoutClientRpc()
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
         SetAllLightsLocal(false);
     }
 
@@ -507,16 +546,32 @@ public class RushMonsterEvent : NetworkBehaviour
             return;
         }
 
+        if (!IsClientInBunkerServer(clientId))
+        {
+            return;
+        }
+
         KillPlayerClientRpc(clientId);
     }
 
     IEnumerator FlickerLightsLocal()
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            yield break;
+        }
+
         int flickerCount = 0;
         int maxFlickers = 10;
 
         while (flickerCount < maxFlickers)
         {
+            if (!IsLocalPlayerInBunker())
+            {
+                RestoreLightsLocal();
+                yield break;
+            }
+
             foreach (Light light in whiteLights)
             {
                 if (light != null)
@@ -620,6 +675,16 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void KillPlayerLocal(bool restartScene)
     {
+        if (!IsLocalPlayerInBunker())
+        {
+            return;
+        }
+
+        if (IsAnyLockerHiddenForLocalPlayer())
+        {
+            return;
+        }
+
         if (oxygenSystem != null)
         {
             oxygenSystem.enabled = false;
@@ -784,6 +849,57 @@ public class RushMonsterEvent : NetworkBehaviour
         foreach (var locker in lockers)
         {
             if (locker != null && locker.IsClientHidden(clientId))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsLocalPlayerInBunker()
+    {
+        RefreshLocalPlayerReference();
+
+        if (oxygenSystem != null)
+        {
+            return oxygenSystem.IsInBunker();
+        }
+
+        if (playerTransform == null)
+        {
+            return false;
+        }
+
+        Collider[] hits = Physics.OverlapSphere(playerTransform.position, 1f);
+        foreach (Collider hit in hits)
+        {
+            if (hit != null && hit.CompareTag(bunkerZoneTag))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsClientInBunkerServer(ulong clientId)
+    {
+        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
+        {
+            return false;
+        }
+
+        OxygenSystem oxygen = client.PlayerObject.GetComponent<OxygenSystem>();
+        if (oxygen != null)
+        {
+            return oxygen.IsInBunker();
+        }
+
+        Collider[] hits = Physics.OverlapSphere(client.PlayerObject.transform.position, 1f);
+        foreach (Collider hit in hits)
+        {
+            if (hit != null && hit.CompareTag(bunkerZoneTag))
             {
                 return true;
             }
