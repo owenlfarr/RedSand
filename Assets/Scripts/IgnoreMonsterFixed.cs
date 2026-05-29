@@ -322,21 +322,12 @@ public class IgnoreMonsterFixed : MonoBehaviour
             audioSource.PlayOneShot(killSound);
         }
 
-        PlayerController playerController = FindObjectOfType<PlayerController>();
-        if (playerController != null)
-        {
-            playerController.enabled = false;
-        }
-
         OxygenSystem oxygenSystem = FindObjectOfType<OxygenSystem>();
         if (oxygenSystem != null)
         {
-            oxygenSystem.enabled = false;
+            StartCoroutine(ShowIgnoreDeath());
+            oxygenSystem.MarkDeadFromMonster();
         }
-
-        StartCoroutine(ShowIgnoreDeath());
-
-        Time.timeScale = 0f;
     }
 
     IEnumerator ShowIgnoreDeath()

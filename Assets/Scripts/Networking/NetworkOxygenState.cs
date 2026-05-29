@@ -18,6 +18,11 @@ public class NetworkOxygenState : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
+    public NetworkVariable<bool> UseBlackDeathIntro = new NetworkVariable<bool>(
+        true,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
     public void Initialize(float maxOxygen)
     {
         if (!IsServer)
@@ -28,6 +33,7 @@ public class NetworkOxygenState : NetworkBehaviour
         CurrentOxygen.Value = maxOxygen;
         IsInBunker.Value = false;
         IsDead.Value = false;
+        UseBlackDeathIntro.Value = true;
     }
 
     [ServerRpc(RequireOwnership = false)]

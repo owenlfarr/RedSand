@@ -438,22 +438,19 @@ public class SurveyorMonster : NetworkBehaviour
 
         if (targetClients.Count == 0 && playerTransform != null)
         {
-            PlayerController playerController = playerTransform.GetComponent<PlayerController>();
-            if (playerController != null)
-            {
-                playerController.enabled = false;
-            }
-
             OxygenSystem oxygenSystem = playerTransform.GetComponent<OxygenSystem>();
             if (oxygenSystem != null)
             {
-                oxygenSystem.enabled = false;
+                oxygenSystem.MarkDeadFromMonster();
             }
-
-            StartCoroutine(ShowSurveyorDeath(true));
         }
         else
         {
+            foreach (ulong clientId in targetClients)
+            {
+                MarkClientDeadServer(clientId);
+            }
+
             ShowSurveyorDeathClientRpc();
         }
 
@@ -476,20 +473,12 @@ public class SurveyorMonster : NetworkBehaviour
             audioSource.PlayOneShot(killSound);
         }
 
-        PlayerController playerController = playerTransform != null ? playerTransform.GetComponent<PlayerController>() : FindObjectOfType<PlayerController>();
-        if (playerController != null)
-        {
-            playerController.enabled = false;
-        }
-
         OxygenSystem oxygenSystem = playerTransform != null ? playerTransform.GetComponent<OxygenSystem>() : FindObjectOfType<OxygenSystem>();
         if (oxygenSystem != null)
         {
-            oxygenSystem.enabled = false;
+            StartCoroutine(ShowSurveyorDeath(true));
+            oxygenSystem.MarkDeadFromMonster();
         }
-
-        StartCoroutine(ShowSurveyorDeath(true));
-        Time.timeScale = 0f;
     }
 
     [ClientRpc]
@@ -498,10 +487,22 @@ public class SurveyorMonster : NetworkBehaviour
         StartCoroutine(ShowSurveyorDeath(false));
     }
 
+    private void MarkClientDeadServer(ulong clientId)
+    {
+        if (!IsServer || NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
+        {
+            return;
+        }
+
+        OxygenSystem oxygenSystem = client.PlayerObject.GetComponent<OxygenSystem>();
+        if (oxygenSystem != null)
+        {
+            oxygenSystem.MarkDeadFromMonster();
+        }
+    }
+
     IEnumerator ShowSurveyorDeath(bool restartScene)
     {
-        Time.timeScale = 0f;
-
         Canvas blackCanvas = new GameObject("SurveyorDeathCanvas").AddComponent<Canvas>();
         blackCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
         blackCanvas.sortingOrder = 9999;
@@ -540,12 +541,7 @@ public class SurveyorMonster : NetworkBehaviour
 
         if (restartScene)
         {
-            Time.timeScale = 1f;
             UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
-        }
-        else
-        {
-            Time.timeScale = 0f;
         }
     }
 

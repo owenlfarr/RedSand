@@ -52,9 +52,12 @@ public class OxygenSystem : NetworkBehaviour
     private float rechargeRate;
     private Collider[] bunkerCheckResults = new Collider[10];
     private Light playerFlashlight;
+    private PlayerDeathSpectator deathSpectator;
+    private bool useBlackDeathIntro = true;
 
     void Start()
     {
+        EnsureDeathSpectator();
         currentOxygen = maxOxygen;
         
         drainRate = maxOxygen / surfaceDepletionTime;
@@ -118,6 +121,7 @@ public class OxygenSystem : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        EnsureDeathSpectator();
         IsFlashlightEnabledNetwork.OnValueChanged += OnFlashlightEnabledNetworkChanged;
         EnsureFlashlightReference();
         ApplyFlashlightState(IsFlashlightEnabledNetwork.Value);
@@ -355,6 +359,7 @@ public class OxygenSystem : NetworkBehaviour
             return;
         }
 
+        oxygenState.UseBlackDeathIntro.Value = true;
         oxygenState.IsDead.Value = true;
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
@@ -373,21 +378,10 @@ public class OxygenSystem : NetworkBehaviour
         if (isDead) return;
 
         isDead = true;
+        useBlackDeathIntro = true;
 
-        if (audioSource != null && deathSound != null)
-        {
-            audioSource.PlayOneShot(deathSound);
-        }
-
-        Time.timeScale = 0f;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        if (deathScreen != null)
-        {
-            StartCoroutine(ShowDeathSequence());
-        }
+        EnsureDeathSpectator();
+        deathSpectator?.HandleDeathState();
 
         Debug.Log("Player died from oxygen deprivation!");
     }
@@ -395,20 +389,8 @@ public class OxygenSystem : NetworkBehaviour
     [ClientRpc]
     private void PlayOxygenDeathClientRpc(ClientRpcParams clientRpcParams = default)
     {
-        if (audioSource != null && deathSound != null)
-        {
-            audioSource.PlayOneShot(deathSound);
-        }
-
-        Time.timeScale = 0f;
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        if (deathScreen != null)
-        {
-            StartCoroutine(ShowDeathSequence());
-        }
+        EnsureDeathSpectator();
+        deathSpectator?.HandleDeathState();
     }
 
     IEnumerator ShowDeathSequence()
@@ -487,13 +469,30 @@ public class OxygenSystem : NetworkBehaviour
         {
             if (IsServer && oxygenState != null)
             {
+                oxygenState.UseBlackDeathIntro.Value = false;
                 oxygenState.IsDead.Value = true;
             }
 
+            useBlackDeathIntro = false;
+            EnsureDeathSpectator();
+            deathSpectator?.HandleDeathState();
             return;
         }
 
         isDead = true;
+        useBlackDeathIntro = false;
+        EnsureDeathSpectator();
+        deathSpectator?.HandleDeathState();
+    }
+
+    public bool ShouldUseBlackDeathIntro()
+    {
+        if (IsNetworkSessionActive() && oxygenState != null)
+        {
+            return oxygenState.UseBlackDeathIntro.Value;
+        }
+
+        return useBlackDeathIntro;
     }
 
     public void SetFlashlightEnabled(bool enabledState)
@@ -579,6 +578,20 @@ public class OxygenSystem : NetworkBehaviour
         if (playerLights.Length > 0)
         {
             playerFlashlight = playerLights[0];
+        }
+    }
+
+    private void EnsureDeathSpectator()
+    {
+        if (deathSpectator != null)
+        {
+            return;
+        }
+
+        deathSpectator = GetComponent<PlayerDeathSpectator>();
+        if (deathSpectator == null)
+        {
+            deathSpectator = gameObject.AddComponent<PlayerDeathSpectator>();
         }
     }
 

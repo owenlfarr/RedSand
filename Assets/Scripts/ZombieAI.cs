@@ -875,21 +875,20 @@ public class ZombieAI : NetworkBehaviour
     {
         Debug.Log("<color=red>[Zombie]</color> Player caught! Triggering jumpscare");
 
-        if (JumpscareSystem.Instance != null && zombieJumpscareImage != null)
-        {
-            JumpscareSystem.Instance.TriggerJumpscareWithTexture(zombieJumpscareImage, "", zombieJumpscareSound);
-        }
-        else
-        {
-            StartCoroutine(ShowZombieJumpscareOffline());
-        }
-
-        Time.timeScale = 0f;
-
         PlayerController playerController = playerTransform != null ? playerTransform.GetComponent<PlayerController>() : null;
-        if (playerController != null)
+        OxygenSystem oxygen = playerController != null ? playerController.GetComponent<OxygenSystem>() : null;
+        if (oxygen != null)
         {
-            playerController.enabled = false;
+            if (JumpscareSystem.Instance != null && zombieJumpscareImage != null)
+            {
+                JumpscareSystem.Instance.TriggerJumpscareWithTexture(zombieJumpscareImage, "", zombieJumpscareSound);
+            }
+            else
+            {
+                StartCoroutine(ShowZombieJumpscareOffline());
+            }
+
+            oxygen.MarkDeadFromMonster();
         }
     }
 
@@ -905,8 +904,6 @@ public class ZombieAI : NetworkBehaviour
 
     IEnumerator ShowZombieJumpscareCommon(bool restartScene)
     {
-        Time.timeScale = 0f;
-
         CreateJumpscareUI();
 
         if (jumpscarePanel != null)
@@ -931,12 +928,7 @@ public class ZombieAI : NetworkBehaviour
 
         if (restartScene)
         {
-            Time.timeScale = 1f;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-        }
-        else
-        {
-            Time.timeScale = 0f;
         }
     }
 

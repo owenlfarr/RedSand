@@ -39,6 +39,7 @@ public class PlayerController : NetworkBehaviour
 
     private CharacterController controller;
     private NetworkPlayerMovementState movementState;
+    private OxygenSystem oxygenSystem;
     private Vector3 velocity;
     private bool isGrounded;
     private bool wasGrounded;
@@ -57,6 +58,7 @@ public class PlayerController : NetworkBehaviour
     {
         controller = GetComponent<CharacterController>();
         movementState = GetComponent<NetworkPlayerMovementState>();
+        oxygenSystem = GetComponent<OxygenSystem>();
         sprintEnergy = maxSprintDuration;
         canSprint = true;
         wasGrounded = true;
@@ -129,6 +131,11 @@ public class PlayerController : NetworkBehaviour
 
     private bool CanProcessLocalInput()
     {
+        if (oxygenSystem != null && oxygenSystem.IsDead())
+        {
+            return false;
+        }
+
         return (!IsSpawned || IsOwner) && (movementState == null || movementState.MovementEnabled.Value);
     }
 

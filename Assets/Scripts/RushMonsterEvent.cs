@@ -419,6 +419,7 @@ public class RushMonsterEvent : NetworkBehaviour
         {
             foreach (ulong clientId in playersToKill)
             {
+                MarkClientDeadServer(clientId);
                 KillPlayerClientRpc(clientId);
             }
         }
@@ -687,16 +688,16 @@ public class RushMonsterEvent : NetworkBehaviour
 
         if (oxygenSystem != null)
         {
-            oxygenSystem.enabled = false;
-        }
+            if (JumpscareSystem.Instance != null && rushJumpscareImage != null)
+            {
+                JumpscareSystem.Instance.TriggerJumpscareWithTexture(rushJumpscareImage, rushDeathMessage, deathSound);
+            }
+            else
+            {
+                StartCoroutine(ShowBuiltInJumpscare(restartScene));
+            }
 
-        if (JumpscareSystem.Instance != null && rushJumpscareImage != null)
-        {
-            JumpscareSystem.Instance.TriggerJumpscareWithTexture(rushJumpscareImage, rushDeathMessage, deathSound);
-        }
-        else
-        {
-            StartCoroutine(ShowBuiltInJumpscare(restartScene));
+            oxygenSystem.MarkDeadFromMonster();
         }
 
         Debug.Log("<color=red>[Rush Monster]</color> Player has been killed by the entity");
@@ -855,6 +856,20 @@ public class RushMonsterEvent : NetworkBehaviour
         }
 
         return false;
+    }
+
+    private void MarkClientDeadServer(ulong clientId)
+    {
+        if (!IsServer || NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
+        {
+            return;
+        }
+
+        OxygenSystem targetOxygen = client.PlayerObject.GetComponent<OxygenSystem>();
+        if (targetOxygen != null)
+        {
+            targetOxygen.MarkDeadFromMonster();
+        }
     }
 
     private bool IsLocalPlayerInBunker()
