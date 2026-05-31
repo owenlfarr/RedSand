@@ -38,8 +38,33 @@ public class LockerInteractionNew : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
+    public NetworkVariable<ulong> Locker0HiddenClientId = new NetworkVariable<ulong>(
+        ulong.MaxValue,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    public NetworkVariable<ulong> Locker1HiddenClientId = new NetworkVariable<ulong>(
+        ulong.MaxValue,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    public NetworkVariable<ulong> Locker2HiddenClientId = new NetworkVariable<ulong>(
+        ulong.MaxValue,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    public NetworkVariable<ulong> Locker3HiddenClientId = new NetworkVariable<ulong>(
+        ulong.MaxValue,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    private const int MaxNetworkedLockers = 4;
     private bool isPlayerNearLocker = false;
     private bool isPlayerHidden = false;
+    private int currentLockerIndex = -1;
+    private int nearbyLockerIndex = -1;
+    private Transform currentLockerTransform;
+    private Transform currentLockerCameraTransform;
     private Transform playerTransform;
     private Transform playerCamera;
     private CharacterController playerController;
@@ -50,7 +75,8 @@ public class LockerInteractionNew : NetworkBehaviour
     private float originalFOV;
     private AudioSource audioSource;
     private readonly Dictionary<Renderer, bool> rendererOriginalState = new Dictionary<Renderer, bool>();
-    private ulong lastAppliedHiddenClientId = ulong.MaxValue;
+    private readonly Dictionary<ulong, bool> appliedHiddenClientIds = new Dictionary<ulong, bool>();
+    private readonly List<Transform> managedLockers = new List<Transform>();
 
     private const KeyCode INTERACTION_KEY = KeyCode.E;
 
@@ -90,6 +116,8 @@ public class LockerInteractionNew : NetworkBehaviour
             }
         }
 
+        RefreshManagedLockers();
+
         if (lockerCameraTransform != null)
         {
             Camera lockerCam = lockerCameraTransform.GetComponent<Camera>();
@@ -120,6 +148,10 @@ public class LockerInteractionNew : NetworkBehaviour
         {
             HiddenClientIdNetwork.Value = ulong.MaxValue;
             DoorOpenNetwork.Value = true;
+            Locker0HiddenClientId.Value = ulong.MaxValue;
+            Locker1HiddenClientId.Value = ulong.MaxValue;
+            Locker2HiddenClientId.Value = ulong.MaxValue;
+            Locker3HiddenClientId.Value = ulong.MaxValue;
         }
     }
 
@@ -158,9 +190,29 @@ public class LockerInteractionNew : NetworkBehaviour
             return;
         }
 
-        float distance = Vector3.Distance(playerTransform.position, transform.position);
+        RefreshManagedLockers();
+
+        float distance = float.MaxValue;
+        int nearestLockerIndex = -1;
+        for (int i = 0; i < managedLockers.Count && i < MaxNetworkedLockers; i++)
+        {
+            Transform locker = managedLockers[i];
+            if (locker == null)
+            {
+                continue;
+            }
+
+            float candidateDistance = Vector3.Distance(playerTransform.position, locker.position);
+            if (candidateDistance < distance)
+            {
+                distance = candidateDistance;
+                nearestLockerIndex = i;
+            }
+        }
+
         bool wasNear = isPlayerNearLocker;
-        isPlayerNearLocker = distance <= interactionDistance;
+        isPlayerNearLocker = nearestLockerIndex >= 0 && distance <= interactionDistance;
+        nearbyLockerIndex = isPlayerNearLocker ? nearestLockerIndex : -1;
 
         if (isPlayerNearLocker && !wasNear && !isPlayerHidden)
         {
@@ -173,26 +225,40 @@ public class LockerInteractionNew : NetworkBehaviour
 
         if (isPlayerNearLocker && interactionPromptText != null && !isPlayerHidden)
         {
-            interactionPromptText.text = $"Press E to hide in locker\n({distance:F1}m)";
+            bool occupied = IsLockerOccupiedByAnotherClient(nearbyLockerIndex);
+            interactionPromptText.text = occupied
+                ? $"Locker occupied\n({distance:F1}m)"
+                : $"Press E to hide in locker\n({distance:F1}m)";
         }
     }
 
     void RequestEnterLocker()
     {
+        int lockerIndex = nearbyLockerIndex;
+        if (lockerIndex < 0 || lockerIndex >= managedLockers.Count || lockerIndex >= MaxNetworkedLockers)
+        {
+            return;
+        }
+
+        if (IsLockerOccupiedByAnotherClient(lockerIndex))
+        {
+            return;
+        }
+
         if (IsNetworkSessionActive())
         {
             if (IsServer)
             {
-                EnterLockerServer(NetworkManager.Singleton.LocalClientId);
+                EnterLockerServer(NetworkManager.Singleton.LocalClientId, lockerIndex);
             }
             else
             {
-                RequestEnterLockerServerRpc();
+                RequestEnterLockerServerRpc(lockerIndex);
             }
             return;
         }
 
-        EnterLockerLocal();
+        EnterLockerLocal(lockerIndex);
     }
 
     void RequestExitLocker()
@@ -213,13 +279,24 @@ public class LockerInteractionNew : NetworkBehaviour
         ExitLockerLocal(true);
     }
 
-    void EnterLockerLocal()
+    void EnterLockerLocal(int lockerIndex)
     {
         Debug.Log("<color=cyan>[Locker]</color> Entering locker...");
 
         RefreshLocalPlayerReference();
+        RefreshManagedLockers();
 
-        if (playerCamera == null || lockerCameraTransform == null)
+        if (lockerIndex < 0 || lockerIndex >= managedLockers.Count)
+        {
+            Debug.LogError("<color=red>[Locker]</color> Locker index not found!");
+            return;
+        }
+
+        currentLockerIndex = lockerIndex;
+        currentLockerTransform = managedLockers[lockerIndex];
+        currentLockerCameraTransform = GetLockerCameraTransform(currentLockerTransform);
+
+        if (playerCamera == null || currentLockerCameraTransform == null)
         {
             Debug.LogError("<color=red>[Locker]</color> Camera not found!");
             return;
@@ -234,8 +311,8 @@ public class LockerInteractionNew : NetworkBehaviour
             cam.fieldOfView = hideFOV;
         }
 
-        playerCamera.position = lockerCameraTransform.position;
-        playerCamera.rotation = lockerCameraTransform.rotation;
+        playerCamera.position = currentLockerCameraTransform.position;
+        playerCamera.rotation = currentLockerCameraTransform.rotation;
 
         if (!IsNetworkSessionActive() && playerController != null)
         {
@@ -259,15 +336,14 @@ public class LockerInteractionNew : NetworkBehaviour
         Debug.Log("<color=green>[Locker]</color> Camera locked at locker camera position");
     }
 
-    void ExitLockerLocal(bool shouldPlaySound)
+    void ExitLockerLocal(bool shouldPlaySound, bool killIfRush = true)
     {
         Debug.Log("<color=cyan>[Locker]</color> Exiting locker...");
 
-        if (RushMonsterEvent.Instance != null && RushMonsterEvent.Instance.IsRushPassing())
+        if (killIfRush && RushMonsterEvent.Instance != null && RushMonsterEvent.Instance.IsRushPassing())
         {
             Debug.Log("<color=red>[Locker]</color> Player exited during Rush - DEATH!");
-            RestorePlayerFromLocker();
-            isPlayerHidden = false;
+            RestoreExitedState();
 
             if (IsNetworkSessionActive() && IsServer)
             {
@@ -281,9 +357,7 @@ public class LockerInteractionNew : NetworkBehaviour
             return;
         }
 
-        RestorePlayerFromLocker();
-        isPlayerHidden = false;
-        SetPlayerVisualHidden(playerTransform, false);
+        RestoreExitedState();
 
         if (shouldPlaySound && doorOpenSound != null && audioSource != null)
         {
@@ -291,6 +365,16 @@ public class LockerInteractionNew : NetworkBehaviour
         }
 
         Debug.Log("<color=green>[Locker]</color> Player exited - camera and controls restored");
+    }
+
+    void RestoreExitedState()
+    {
+        RestorePlayerFromLocker();
+        isPlayerHidden = false;
+        SetPlayerVisualHidden(playerTransform, false);
+        currentLockerIndex = -1;
+        currentLockerTransform = null;
+        currentLockerCameraTransform = null;
     }
 
     void RestorePlayerFromLocker()
@@ -323,14 +407,14 @@ public class LockerInteractionNew : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    private void RequestEnterLockerServerRpc(ServerRpcParams serverRpcParams = default)
+    private void RequestEnterLockerServerRpc(int lockerIndex, ServerRpcParams serverRpcParams = default)
     {
         if (!IsServer)
         {
             return;
         }
 
-        EnterLockerServer(serverRpcParams.Receive.SenderClientId);
+        EnterLockerServer(serverRpcParams.Receive.SenderClientId, lockerIndex);
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -344,14 +428,26 @@ public class LockerInteractionNew : NetworkBehaviour
         ExitLockerServer(serverRpcParams.Receive.SenderClientId);
     }
 
-    void EnterLockerServer(ulong clientId)
+    void EnterLockerServer(ulong clientId, int lockerIndex)
     {
-        if (HiddenClientIdNetwork.Value != ulong.MaxValue && HiddenClientIdNetwork.Value != clientId)
+        if (lockerIndex < 0 || lockerIndex >= MaxNetworkedLockers)
         {
             return;
         }
 
-        HiddenClientIdNetwork.Value = clientId;
+        ulong hiddenClientId = GetHiddenClientIdForLocker(lockerIndex);
+        if (hiddenClientId != ulong.MaxValue && hiddenClientId != clientId)
+        {
+            return;
+        }
+
+        if (IsClientHiddenInAnotherLocker(clientId, lockerIndex))
+        {
+            return;
+        }
+
+        SetHiddenClientIdForLocker(lockerIndex, clientId);
+        SyncLegacyHiddenClientId();
         DoorOpenNetwork.Value = false;
         SetPlayerMovementEnabled(clientId, false);
 
@@ -363,12 +459,13 @@ public class LockerInteractionNew : NetworkBehaviour
             }
         };
 
-        EnterLockerClientRpc(clientRpcParams);
+        EnterLockerClientRpc(lockerIndex, clientRpcParams);
     }
 
     void ExitLockerServer(ulong clientId)
     {
-        if (HiddenClientIdNetwork.Value != clientId)
+        int lockerIndex = GetLockerIndexForClient(clientId);
+        if (lockerIndex < 0)
         {
             return;
         }
@@ -376,16 +473,24 @@ public class LockerInteractionNew : NetworkBehaviour
         if (RushMonsterEvent.Instance != null && RushMonsterEvent.Instance.IsRushPassing())
         {
             RushMonsterEvent.Instance.KillPlayerForExiting(clientId);
-            HiddenClientIdNetwork.Value = ulong.MaxValue;
+            SetHiddenClientIdForLocker(lockerIndex, ulong.MaxValue);
+            SyncLegacyHiddenClientId();
             DoorOpenNetwork.Value = true;
             SetPlayerMovementEnabled(clientId, true);
+            SendExitLockerClientRpc(clientId, false);
             return;
         }
 
-        HiddenClientIdNetwork.Value = ulong.MaxValue;
+        SetHiddenClientIdForLocker(lockerIndex, ulong.MaxValue);
+        SyncLegacyHiddenClientId();
         DoorOpenNetwork.Value = true;
         SetPlayerMovementEnabled(clientId, true);
 
+        SendExitLockerClientRpc(clientId, true);
+    }
+
+    void SendExitLockerClientRpc(ulong clientId, bool killIfRush)
+    {
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
             Send = new ClientRpcSendParams
@@ -394,19 +499,19 @@ public class LockerInteractionNew : NetworkBehaviour
             }
         };
 
-        ExitLockerClientRpc(clientRpcParams);
+        ExitLockerClientRpc(killIfRush, clientRpcParams);
     }
 
     [ClientRpc]
-    private void EnterLockerClientRpc(ClientRpcParams clientRpcParams = default)
+    private void EnterLockerClientRpc(int lockerIndex, ClientRpcParams clientRpcParams = default)
     {
-        EnterLockerLocal();
+        EnterLockerLocal(lockerIndex);
     }
 
     [ClientRpc]
-    private void ExitLockerClientRpc(ClientRpcParams clientRpcParams = default)
+    private void ExitLockerClientRpc(bool killIfRush, ClientRpcParams clientRpcParams = default)
     {
-        ExitLockerLocal(true);
+        ExitLockerLocal(true, killIfRush);
     }
 
     public bool IsPlayerHidden()
@@ -415,7 +520,7 @@ public class LockerInteractionNew : NetworkBehaviour
         {
             if (NetworkManager.Singleton != null)
             {
-                return HiddenClientIdNetwork.Value == NetworkManager.Singleton.LocalClientId;
+                return IsClientHidden(NetworkManager.Singleton.LocalClientId);
             }
 
             return false;
@@ -431,7 +536,7 @@ public class LockerInteractionNew : NetworkBehaviour
             return isPlayerHidden;
         }
 
-        return HiddenClientIdNetwork.Value == clientId;
+        return GetLockerIndexForClient(clientId) >= 0;
     }
 
     private void SetPlayerMovementEnabled(ulong clientId, bool enabled)
@@ -533,33 +638,45 @@ public class LockerInteractionNew : NetworkBehaviour
             return;
         }
 
-        ulong hiddenId = HiddenClientIdNetwork.Value;
-        if (hiddenId == lastAppliedHiddenClientId)
+        Dictionary<ulong, bool> currentlyHidden = new Dictionary<ulong, bool>();
+        for (int i = 0; i < MaxNetworkedLockers; i++)
         {
-            return;
-        }
-
-        // Restore the previously hidden player's visuals if needed.
-        if (lastAppliedHiddenClientId != ulong.MaxValue)
-        {
-            Transform prev = GetPlayerTransformByClientId(lastAppliedHiddenClientId);
-            if (prev != null)
+            ulong hiddenId = GetHiddenClientIdForLocker(i);
+            if (hiddenId != ulong.MaxValue)
             {
-                SetPlayerVisualHidden(prev, false);
+                currentlyHidden[hiddenId] = true;
             }
         }
 
-        // Hide the current hidden player's visuals.
-        if (hiddenId != ulong.MaxValue)
+        List<ulong> previouslyHidden = new List<ulong>(appliedHiddenClientIds.Keys);
+        foreach (ulong clientId in previouslyHidden)
         {
-            Transform nowHidden = GetPlayerTransformByClientId(hiddenId);
+            if (!currentlyHidden.ContainsKey(clientId))
+            {
+                Transform prev = GetPlayerTransformByClientId(clientId);
+                if (prev != null)
+                {
+                    SetPlayerVisualHidden(prev, false);
+                }
+
+                appliedHiddenClientIds.Remove(clientId);
+            }
+        }
+
+        foreach (ulong clientId in currentlyHidden.Keys)
+        {
+            if (appliedHiddenClientIds.ContainsKey(clientId))
+            {
+                continue;
+            }
+
+            Transform nowHidden = GetPlayerTransformByClientId(clientId);
             if (nowHidden != null)
             {
                 SetPlayerVisualHidden(nowHidden, true);
+                appliedHiddenClientIds[clientId] = true;
             }
         }
-
-        lastAppliedHiddenClientId = hiddenId;
     }
 
     Transform GetPlayerTransformByClientId(ulong clientId)
@@ -604,6 +721,177 @@ public class LockerInteractionNew : NetworkBehaviour
             else if (rendererOriginalState.TryGetValue(renderer, out bool wasEnabled))
             {
                 renderer.enabled = wasEnabled;
+            }
+        }
+    }
+
+    void RefreshManagedLockers()
+    {
+        managedLockers.Clear();
+
+        LockerInteractionNew[] lockerManagers = FindObjectsOfType<LockerInteractionNew>(true);
+        if (lockerManagers != null && lockerManagers.Length > 1)
+        {
+            managedLockers.Add(GetOwningLockerTransform());
+            return;
+        }
+
+        GameObject[] lockerObjects = GameObject.FindGameObjectsWithTag("Locker");
+        foreach (GameObject lockerObject in lockerObjects)
+        {
+            if (lockerObject != null && !managedLockers.Contains(lockerObject.transform))
+            {
+                managedLockers.Add(lockerObject.transform);
+            }
+        }
+
+        if (managedLockers.Count == 0)
+        {
+            managedLockers.Add(GetOwningLockerTransform());
+        }
+
+        managedLockers.Sort((a, b) =>
+        {
+            int nameCompare = string.CompareOrdinal(a.name, b.name);
+            if (nameCompare != 0)
+            {
+                return nameCompare;
+            }
+
+            int xCompare = a.position.x.CompareTo(b.position.x);
+            if (xCompare != 0)
+            {
+                return xCompare;
+            }
+
+            return a.position.z.CompareTo(b.position.z);
+        });
+    }
+
+    Transform GetOwningLockerTransform()
+    {
+        Transform candidate = transform;
+        while (candidate != null)
+        {
+            if (candidate.CompareTag("Locker"))
+            {
+                return candidate;
+            }
+
+            candidate = candidate.parent;
+        }
+
+        return transform;
+    }
+
+    Transform GetLockerCameraTransform(Transform locker)
+    {
+        if (locker == null)
+        {
+            return null;
+        }
+
+        if (locker == transform && lockerCameraTransform != null)
+        {
+            return lockerCameraTransform;
+        }
+
+        Transform foundCamera = locker.Find("Camera");
+        if (foundCamera != null)
+        {
+            return foundCamera;
+        }
+
+        GameObject fallback = new GameObject($"{locker.name}_LockerCameraRuntime");
+        fallback.transform.SetParent(locker, false);
+        fallback.transform.localPosition = new Vector3(0f, 1.55f, 0.12f);
+        fallback.transform.localRotation = Quaternion.identity;
+        return fallback.transform;
+    }
+
+    bool IsLockerOccupiedByAnotherClient(int lockerIndex)
+    {
+        if (!IsNetworkSessionActive() || NetworkManager.Singleton == null)
+        {
+            return false;
+        }
+
+        ulong hiddenClientId = GetHiddenClientIdForLocker(lockerIndex);
+        return hiddenClientId != ulong.MaxValue && hiddenClientId != NetworkManager.Singleton.LocalClientId;
+    }
+
+    bool IsClientHiddenInAnotherLocker(ulong clientId, int allowedLockerIndex)
+    {
+        for (int i = 0; i < MaxNetworkedLockers; i++)
+        {
+            if (i != allowedLockerIndex && GetHiddenClientIdForLocker(i) == clientId)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    int GetLockerIndexForClient(ulong clientId)
+    {
+        for (int i = 0; i < MaxNetworkedLockers; i++)
+        {
+            if (GetHiddenClientIdForLocker(i) == clientId)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    ulong GetHiddenClientIdForLocker(int lockerIndex)
+    {
+        switch (lockerIndex)
+        {
+            case 0:
+                return Locker0HiddenClientId.Value;
+            case 1:
+                return Locker1HiddenClientId.Value;
+            case 2:
+                return Locker2HiddenClientId.Value;
+            case 3:
+                return Locker3HiddenClientId.Value;
+            default:
+                return ulong.MaxValue;
+        }
+    }
+
+    void SetHiddenClientIdForLocker(int lockerIndex, ulong clientId)
+    {
+        switch (lockerIndex)
+        {
+            case 0:
+                Locker0HiddenClientId.Value = clientId;
+                break;
+            case 1:
+                Locker1HiddenClientId.Value = clientId;
+                break;
+            case 2:
+                Locker2HiddenClientId.Value = clientId;
+                break;
+            case 3:
+                Locker3HiddenClientId.Value = clientId;
+                break;
+        }
+    }
+
+    void SyncLegacyHiddenClientId()
+    {
+        HiddenClientIdNetwork.Value = ulong.MaxValue;
+        for (int i = 0; i < MaxNetworkedLockers; i++)
+        {
+            ulong hiddenClientId = GetHiddenClientIdForLocker(i);
+            if (hiddenClientId != ulong.MaxValue)
+            {
+                HiddenClientIdNetwork.Value = hiddenClientId;
+                return;
             }
         }
     }
