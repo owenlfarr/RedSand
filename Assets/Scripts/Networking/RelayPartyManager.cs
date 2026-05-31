@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -30,7 +32,9 @@ namespace Networking
         [SerializeField] private Button joinLobbyButton;
         [SerializeField] private Button startGameButton;
         [SerializeField] private Button backButton;
+        [SerializeField] private Button leaveLobbyButton;
         [SerializeField] private TMP_InputField joinCodeInputField;
+        [SerializeField] private TMP_InputField usernameInputField;
         [SerializeField] private TMP_Text lobbyCodeText;
         [SerializeField] private Button lobbyCodeDisplayButton;
         [SerializeField] private bool showLegacyOnGUI = false;
@@ -44,6 +48,12 @@ namespace Networking
         [SerializeField] private TextMeshPro player2NameText;
         [SerializeField] private TextMeshPro player3NameText;
         [SerializeField] private bool disableAstronautAnimatorsInMenu = false;
+        [SerializeField] private bool floatAstronautsInMenu = true;
+        [SerializeField] private Vector2 astronautFloatBounds = new Vector2(1.25f, 0.65f);
+        [SerializeField] private Vector2 astronautFloatSpeedRange = new Vector2(0.18f, 0.34f);
+        [SerializeField] private float astronautFloatBobAmplitude = 0.08f;
+        [SerializeField] private float astronautFloatBobSpeed = 1.4f;
+        [SerializeField] private Vector2 astronautRotationSpeedRange = new Vector2(8f, 16f);
 
         [Header("UI Runtime State")]
         [SerializeField] private string latestJoinCode = "";
@@ -60,9 +70,25 @@ namespace Networking
         private int loadingDots;
         private int nextManualSpawnIndex;
         private Coroutine spawnPlayersAfterLoadCoroutine;
+        private Coroutine sendLobbyNameWhenReadyCoroutine;
+        private readonly GameObject[] astronautVisualSlots = new GameObject[3];
+        private readonly Vector3[] astronautBaseLocalPositions = new Vector3[3];
+        private readonly Quaternion[] astronautBaseLocalRotations = new Quaternion[3];
+        private readonly Vector2[] astronautFloatOffsets = new Vector2[3];
+        private readonly Vector2[] astronautFloatVelocities = new Vector2[3];
+        private readonly float[] astronautRotationOffsets = new float[3];
+        private readonly float[] astronautRotationSpeeds = new float[3];
+        private readonly bool[] astronautFloatInitialized = new bool[3];
+        private readonly Dictionary<ulong, string> lobbyPlayerNames = new Dictionary<ulong, string>();
+        private string cachedLocalUserName = "";
+        private bool lobbyNameMessagesRegistered;
+        private string lastSentLocalUserName = "";
 
-        // Stored so we can null it during the lobby (prevents player spawning in MainMenu)
-        // and restore it before the game scene loads.
+        private const string LobbyNameUpdateMessage = "RelayPartyNameUpdate";
+        private const string LobbyNameBroadcastMessage = "RelayPartyNameBroadcast";
+        private const int HardLobbyPlayerLimit = 3;
+
+        // Kept as a fallback if an older scene or inspector state has no player prefab at match start.
         private GameObject _lobbyPlayerPrefab;
 
         public bool HasActiveHostParty
@@ -83,10 +109,14 @@ namespace Networking
                 voiceChatManager = FindObjectOfType<VoiceChatManager>(true);
             }
             AutoBindMenuUI();
+            EnsureUsernameInputExists();
+            EnsureLeaveLobbyButtonExists();
             WireMenuUI();
+            WireUsernameInput();
             SetLobbyUIState(false);
             RefreshLobbyCodeUI();
             AutoBindLobbyVisuals();
+            InitializeAstronautFloatSlots(true);
             EnsureLoadingIndicatorExists();
             UpdateLobbyAstronautVisuals();
             await EnsureServicesReady();
@@ -100,6 +130,9 @@ namespace Networking
             }
 
             UpdateLoadingIndicator();
+            RegisterLobbyNameMessagesIfReady();
+            SyncLocalNameIfNeeded();
+            UpdateMenuAstronautFloating();
             UpdateLobbyAstronautVisuals();
         }
 
@@ -123,6 +156,14 @@ namespace Networking
                 StopCoroutine(spawnPlayersAfterLoadCoroutine);
                 spawnPlayersAfterLoadCoroutine = null;
             }
+
+            if (sendLobbyNameWhenReadyCoroutine != null)
+            {
+                StopCoroutine(sendLobbyNameWhenReadyCoroutine);
+                sendLobbyNameWhenReadyCoroutine = null;
+            }
+
+            UnregisterLobbyNameMessages();
         }
 
         private void OnGUI()
@@ -153,6 +194,10 @@ namespace Networking
                 {
                     StartMatch();
                 }
+                if (GUILayout.Button("Leave Lobby", GUILayout.Height(30f)))
+                {
+                    LeaveLobbyFromUI();
+                }
                 GUI.enabled = true;
             }
             else if (isClientLobby)
@@ -160,6 +205,10 @@ namespace Networking
                 GUILayout.Label("Relay Party");
                 GUILayout.Label($"Status: {statusText}");
                 GUILayout.Label("Waiting for host to start the game...");
+                if (GUILayout.Button("Leave Lobby", GUILayout.Height(30f)))
+                {
+                    LeaveLobbyFromUI();
+                }
             }
             else
             {
@@ -195,6 +244,7 @@ namespace Networking
             if (isBusy) return;
             isBusy = true;
             statusText = "Creating party...";
+            ResetLobbyRosterState();
             RefreshLobbyCodeUI();
 
             try
@@ -218,7 +268,7 @@ namespace Networking
                 Allocation allocation;
                 try
                 {
-                    allocation = await RelayService.Instance.CreateAllocationAsync(maxConnections);
+                    allocation = await RelayService.Instance.CreateAllocationAsync(GetRelayConnectionLimit());
                 }
                 catch (Exception ex)
                 {
@@ -238,24 +288,12 @@ namespace Networking
 
                 transport.SetRelayServerData(AllocationUtils.ToRelayServerData(allocation, relayConnectionType));
 
-                // Null out the player prefab BEFORE StartHost so NGO does not auto-spawn
-                // any player objects in the MainMenu scene (which has no floor — the void).
-                // We restore it in LoadMultiplayerSceneAsHost() right before the game loads.
-                if (nm.NetworkConfig.PlayerPrefab != null)
-                {
-                    _lobbyPlayerPrefab = nm.NetworkConfig.PlayerPrefab;
-                    nm.NetworkConfig.PlayerPrefab = null;
-                }
+                ConfigureLobbyConnectionApproval(nm);
 
                 // StartHost IMMEDIATELY so the Relay server has an active host endpoint.
                 // Without this, joining clients get "invalid code" because the Relay has nobody to route to.
                 if (!nm.StartHost())
                 {
-                    // Restore prefab on failure.
-                    if (_lobbyPlayerPrefab != null)
-                    {
-                        nm.NetworkConfig.PlayerPrefab = _lobbyPlayerPrefab;
-                    }
                     statusText = "StartHost failed — check Relay / NetworkManager settings.";
                     return;
                 }
@@ -273,6 +311,7 @@ namespace Networking
                 NetworkManager.Singleton.OnClientConnectedCallback += OnLobbyClientConnected;
                 NetworkManager.Singleton.OnClientDisconnectCallback += OnLobbyClientDisconnected;
 
+                QueueSendLocalNameWhenReady(true);
                 _ = TryJoinVoiceSafely(latestJoinCode);
                 SetLobbyUIState(true);
                 RefreshLobbyCodeUI();
@@ -325,6 +364,7 @@ namespace Networking
             if (isBusy) return;
             isBusy = true;
             statusText = "Joining party...";
+            ResetLobbyRosterState();
             RefreshLobbyCodeUI();
 
             try
@@ -368,6 +408,7 @@ namespace Networking
                 }
 
                 transport.SetRelayServerData(AllocationUtils.ToRelayServerData(joinAllocation, relayConnectionType));
+                nm.NetworkConfig.ConnectionApproval = true;
 
                 if (!nm.StartClient())
                 {
@@ -383,7 +424,8 @@ namespace Networking
                 nm.OnClientConnectedCallback += OnLobbyClientConnected;
                 nm.OnClientDisconnectCallback += OnLobbyClientDisconnected;
 
-                statusText = "Joined! Waiting for host to start...";
+                statusText = "Joining lobby...";
+                QueueSendLocalNameWhenReady(true);
                 _ = TryJoinVoiceSafely(normalizedCode);
                 RefreshLobbyCodeUI();
             }
@@ -421,11 +463,18 @@ namespace Networking
 
         public void BackFromUI()
         {
+            LeaveLobbyFromUI();
+        }
+
+        public void LeaveLobbyFromUI()
+        {
             var nm = NetworkManager.Singleton;
             if (nm != null)
             {
                 nm.OnClientConnectedCallback -= OnLobbyClientConnected;
                 nm.OnClientDisconnectCallback -= OnLobbyClientDisconnected;
+                nm.ConnectionApprovalCallback -= OnLobbyConnectionApproval;
+                UnregisterLobbyNameMessages();
 
                 if (nm.IsListening)
                 {
@@ -439,19 +488,80 @@ namespace Networking
             lobbyCreated = false;
             hasPendingHostAllocation = false;
             pendingHostAllocation = null;
+            ResetLobbyRosterState();
             _ = TryLeaveVoiceSafely();
             SetLobbyUIState(false);
             RefreshLobbyCodeUI();
+            UpdateLobbyAstronautVisuals();
         }
 
         private void OnLobbyClientConnected(ulong clientId)
         {
+            RegisterLobbyNameMessagesIfReady();
+            var nm = NetworkManager.Singleton;
+            if (nm != null && clientId == nm.LocalClientId)
+            {
+                statusText = nm.IsServer ? statusText : "Joined! Waiting for host to start...";
+                SetLobbyUIState(true);
+                RefreshLobbyCodeUI();
+                QueueSendLocalNameWhenReady(true);
+            }
+
+            if (nm != null && nm.IsServer)
+            {
+                if (!lobbyPlayerNames.ContainsKey(clientId))
+                {
+                    lobbyPlayerNames[clientId] = GetFallbackLobbyPlayerName(clientId);
+                }
+
+                BroadcastLobbyName(clientId, lobbyPlayerNames[clientId]);
+                BroadcastAllLobbyNamesToClient(clientId);
+            }
+
             UpdateLobbyAstronautVisuals();
         }
 
         private void OnLobbyClientDisconnected(ulong clientId)
         {
+            var nm = NetworkManager.Singleton;
+            bool localClientWasDisconnected = nm != null && clientId == nm.LocalClientId && !nm.IsServer;
+            bool hostDisconnectedClient = nm != null && !nm.IsServer && clientId == NetworkManager.ServerClientId;
+
+            lobbyPlayerNames.Remove(clientId);
+
+            if (nm != null && nm.IsServer)
+            {
+                BroadcastLobbyName(clientId, string.Empty);
+            }
+
+            if ((localClientWasDisconnected || hostDisconnectedClient) && !matchStarted)
+            {
+                string reason = nm != null ? nm.DisconnectReason : string.Empty;
+                latestJoinCode = string.Empty;
+                statusText = string.IsNullOrWhiteSpace(reason) ? "Host left the lobby." : reason;
+                lobbyCreated = false;
+                hasPendingHostAllocation = false;
+                pendingHostAllocation = null;
+                ResetLobbyRosterState();
+                UnregisterLobbyNameMessages();
+                _ = TryLeaveVoiceSafely();
+                SetLobbyUIState(false);
+                RefreshLobbyCodeUI();
+            }
+
             UpdateLobbyAstronautVisuals();
+        }
+
+        private void ResetLobbyRosterState()
+        {
+            lobbyPlayerNames.Clear();
+            lastSentLocalUserName = string.Empty;
+
+            if (sendLobbyNameWhenReadyCoroutine != null)
+            {
+                StopCoroutine(sendLobbyNameWhenReadyCoroutine);
+                sendLobbyNameWhenReadyCoroutine = null;
+            }
         }
 
         private async Task<bool> EnsureServicesReady()
@@ -709,6 +819,7 @@ namespace Networking
             }
 
             transport.SetRelayServerData(AllocationUtils.ToRelayServerData(pendingHostAllocation, relayConnectionType));
+            ConfigureLobbyConnectionApproval(nm);
 
             if (!nm.StartHost())
             {
@@ -719,6 +830,43 @@ namespace Networking
             hasPendingHostAllocation = false;
             pendingHostAllocation = null;
             return true;
+        }
+
+        private int GetLobbyPlayerLimit()
+        {
+            return HardLobbyPlayerLimit;
+        }
+
+        private int GetRelayConnectionLimit()
+        {
+            return GetLobbyPlayerLimit();
+        }
+
+        private void ConfigureLobbyConnectionApproval(NetworkManager nm)
+        {
+            if (nm == null)
+            {
+                return;
+            }
+
+            nm.NetworkConfig.ConnectionApproval = true;
+            nm.ConnectionApprovalCallback -= OnLobbyConnectionApproval;
+            nm.ConnectionApprovalCallback += OnLobbyConnectionApproval;
+        }
+
+        private void OnLobbyConnectionApproval(NetworkManager.ConnectionApprovalRequest request, NetworkManager.ConnectionApprovalResponse response)
+        {
+            var nm = NetworkManager.Singleton;
+            int connectedPlayers = nm != null && nm.ConnectedClientsIds != null ? nm.ConnectedClientsIds.Count : 0;
+            bool hasRoom = connectedPlayers < GetLobbyPlayerLimit();
+
+            response.Approved = hasRoom;
+            response.CreatePlayerObject = false;
+            response.PlayerPrefabHash = null;
+            response.Position = null;
+            response.Rotation = null;
+            response.Pending = false;
+            response.Reason = hasRoom ? string.Empty : "Lobby is full. Create a new lobby.";
         }
 
         private void AutoBindMenuUI()
@@ -752,6 +900,12 @@ namespace Networking
                 backButton = FindButtonByNameContains("back");
             }
 
+            if (leaveLobbyButton == null)
+            {
+                leaveLobbyButton = FindButtonByNameContains("leave lobby")
+                    ?? FindButtonByNameContains("leave");
+            }
+
             if (joinCodeInputField == null)
             {
                 joinCodeInputField = FindObjectByNameContains<TMP_InputField>("join code");
@@ -766,11 +920,26 @@ namespace Networking
                 if (joinCodeInputField == null)
                 {
                     var allInputs = GetAllSceneObjectsOfType<TMP_InputField>();
-                    if (allInputs.Length > 0)
+                    foreach (TMP_InputField input in allInputs)
                     {
-                        joinCodeInputField = allInputs[0];
+                        if (input == null || IsUsernameInputName(input.name))
+                        {
+                            continue;
+                        }
+
+                        joinCodeInputField = input;
+                        break;
                     }
                 }
+            }
+
+            if (usernameInputField == null)
+            {
+                usernameInputField = FindObjectByNameContains<TMP_InputField>("username")
+                    ?? FindObjectByNameContains<TMP_InputField>("user name")
+                    ?? FindObjectByNameContains<TMP_InputField>("playername")
+                    ?? FindObjectByNameContains<TMP_InputField>("player name")
+                    ?? FindObjectByNameContains<TMP_InputField>("name input");
             }
 
             if (lobbyCodeText == null)
@@ -819,6 +988,13 @@ namespace Networking
                 backButton.onClick.AddListener(BackFromUI);
             }
 
+            if (leaveLobbyButton != null)
+            {
+                leaveLobbyButton.onClick.RemoveAllListeners();
+                leaveLobbyButton.onClick.RemoveListener(LeaveLobbyFromUI);
+                leaveLobbyButton.onClick.AddListener(LeaveLobbyFromUI);
+            }
+
             if (joinCodeInputField != null)
             {
                 joinCodeInputField.onValueChanged.RemoveListener(OnJoinCodeChanged);
@@ -831,9 +1007,160 @@ namespace Networking
             }
         }
 
+        private void WireUsernameInput()
+        {
+            if (usernameInputField == null)
+            {
+                return;
+            }
+
+            string currentName = GetLocalUserName();
+            usernameInputField.SetTextWithoutNotify(currentName);
+            cachedLocalUserName = currentName;
+            usernameInputField.onValueChanged.RemoveListener(OnUsernameChanged);
+            usernameInputField.onValueChanged.AddListener(OnUsernameChanged);
+        }
+
         private void OnJoinCodeChanged(string value)
         {
             joinCodeInput = value;
+        }
+
+        private void OnUsernameChanged(string value)
+        {
+            string cleanName = SanitizePlayerName(value);
+            cachedLocalUserName = string.IsNullOrWhiteSpace(cleanName) ? "You" : cleanName;
+
+            if (!string.IsNullOrWhiteSpace(cleanName))
+            {
+                PlayerPrefs.SetString("PlayerName", cleanName);
+                PlayerPrefs.Save();
+            }
+
+            QueueSendLocalNameWhenReady(true);
+            UpdateLobbyAstronautVisuals();
+        }
+
+        private void EnsureUsernameInputExists()
+        {
+            if (usernameInputField != null || SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            Canvas canvas = FindObjectByNameContains<Canvas>("canvas");
+            if (canvas == null)
+            {
+                var canvases = GetAllSceneObjectsOfType<Canvas>();
+                if (canvases.Length > 0)
+                {
+                    canvas = canvases[0];
+                }
+            }
+
+            if (canvas == null)
+            {
+                return;
+            }
+
+            GameObject inputObject = new GameObject("UsernameInput");
+            inputObject.transform.SetParent(canvas.transform, false);
+
+            RectTransform inputRect = inputObject.AddComponent<RectTransform>();
+            inputRect.anchorMin = new Vector2(0f, 1f);
+            inputRect.anchorMax = new Vector2(0f, 1f);
+            inputRect.pivot = new Vector2(0f, 1f);
+            inputRect.anchoredPosition = new Vector2(28f, -28f);
+            inputRect.sizeDelta = new Vector2(260f, 42f);
+
+            Image inputBackground = inputObject.AddComponent<Image>();
+            inputBackground.color = new Color(0f, 0f, 0f, 0.45f);
+
+            usernameInputField = inputObject.AddComponent<TMP_InputField>();
+            usernameInputField.characterLimit = 16;
+
+            GameObject textObject = new GameObject("Text");
+            textObject.transform.SetParent(inputObject.transform, false);
+            RectTransform textRect = textObject.AddComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(12f, 5f);
+            textRect.offsetMax = new Vector2(-12f, -5f);
+            TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+            text.fontSize = 22f;
+            text.color = Color.white;
+            text.alignment = TextAlignmentOptions.MidlineLeft;
+            text.text = "";
+
+            GameObject placeholderObject = new GameObject("Placeholder");
+            placeholderObject.transform.SetParent(inputObject.transform, false);
+            RectTransform placeholderRect = placeholderObject.AddComponent<RectTransform>();
+            placeholderRect.anchorMin = Vector2.zero;
+            placeholderRect.anchorMax = Vector2.one;
+            placeholderRect.offsetMin = new Vector2(12f, 5f);
+            placeholderRect.offsetMax = new Vector2(-12f, -5f);
+            TextMeshProUGUI placeholder = placeholderObject.AddComponent<TextMeshProUGUI>();
+            placeholder.fontSize = 22f;
+            placeholder.color = new Color(1f, 1f, 1f, 0.45f);
+            placeholder.alignment = TextAlignmentOptions.MidlineLeft;
+            placeholder.text = "Username";
+
+            usernameInputField.textComponent = text;
+            usernameInputField.placeholder = placeholder;
+            usernameInputField.targetGraphic = inputBackground;
+        }
+
+        private void EnsureLeaveLobbyButtonExists()
+        {
+            if (leaveLobbyButton != null || SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            Canvas canvas = FindObjectByNameContains<Canvas>("canvas");
+            if (canvas == null)
+            {
+                var canvases = GetAllSceneObjectsOfType<Canvas>();
+                if (canvases.Length > 0)
+                {
+                    canvas = canvases[0];
+                }
+            }
+
+            if (canvas == null)
+            {
+                return;
+            }
+
+            GameObject buttonObject = new GameObject("LeaveLobbyButton");
+            buttonObject.transform.SetParent(canvas.transform, false);
+
+            RectTransform buttonRect = buttonObject.AddComponent<RectTransform>();
+            buttonRect.anchorMin = new Vector2(1f, 1f);
+            buttonRect.anchorMax = new Vector2(1f, 1f);
+            buttonRect.pivot = new Vector2(1f, 1f);
+            buttonRect.anchoredPosition = new Vector2(-28f, -28f);
+            buttonRect.sizeDelta = new Vector2(180f, 42f);
+
+            Image background = buttonObject.AddComponent<Image>();
+            background.color = new Color(0.12f, 0.12f, 0.12f, 0.82f);
+
+            leaveLobbyButton = buttonObject.AddComponent<Button>();
+            leaveLobbyButton.targetGraphic = background;
+
+            GameObject labelObject = new GameObject("Text");
+            labelObject.transform.SetParent(buttonObject.transform, false);
+            RectTransform labelRect = labelObject.AddComponent<RectTransform>();
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = Vector2.zero;
+            labelRect.offsetMax = Vector2.zero;
+
+            TextMeshProUGUI label = labelObject.AddComponent<TextMeshProUGUI>();
+            label.text = "Leave Lobby";
+            label.fontSize = 22f;
+            label.color = Color.white;
+            label.alignment = TextAlignmentOptions.Center;
         }
 
         private string ReadJoinCodeFromUI()
@@ -902,7 +1229,8 @@ namespace Networking
         private void SetLobbyUIState(bool created)
         {
             bool showCreateAndJoin = !created;
-            bool showHostControls = created;
+            var nm = NetworkManager.Singleton;
+            bool isHostLobby = created && nm != null && nm.IsHost;
 
             if (createLobbyButton != null)
             {
@@ -921,22 +1249,27 @@ namespace Networking
 
             if (lobbyCodeDisplayButton != null)
             {
-                lobbyCodeDisplayButton.gameObject.SetActive(showHostControls);
+                lobbyCodeDisplayButton.gameObject.SetActive(isHostLobby);
             }
 
             if (lobbyCodeText != null)
             {
-                lobbyCodeText.gameObject.SetActive(showHostControls);
+                lobbyCodeText.gameObject.SetActive(isHostLobby);
             }
 
             if (startGameButton != null)
             {
-                startGameButton.gameObject.SetActive(showHostControls);
+                startGameButton.gameObject.SetActive(isHostLobby);
             }
 
             if (backButton != null)
             {
-                backButton.gameObject.SetActive(showHostControls);
+                backButton.gameObject.SetActive(isHostLobby);
+            }
+
+            if (leaveLobbyButton != null)
+            {
+                leaveLobbyButton.gameObject.SetActive(created);
             }
         }
 
@@ -968,6 +1301,7 @@ namespace Networking
             player1NameText = EnsureNameTag(player1Visual, player1NameText, "Player1NameTag");
             player2NameText = EnsureNameTag(player2Visual, player2NameText, "Player2NameTag");
             player3NameText = EnsureNameTag(player3Visual, player3NameText, "Player3NameTag");
+            InitializeAstronautFloatSlots(false);
 
             if (disableAstronautAnimatorsInMenu)
             {
@@ -986,7 +1320,7 @@ namespace Networking
 
             if (current != null)
             {
-                current.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+                current.transform.localPosition = new Vector3(0f, -0.45f, 0f);
                 current.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 current.transform.localScale = Vector3.one * 0.18f;
                 return current;
@@ -995,7 +1329,7 @@ namespace Networking
             Transform existing = anchor.transform.Find(tagName);
             if (existing != null)
             {
-                existing.localPosition = new Vector3(0f, -0.2f, 0f);
+                existing.localPosition = new Vector3(0f, -0.45f, 0f);
                 existing.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 existing.localScale = Vector3.one * 0.18f;
                 return existing.GetComponent<TextMeshPro>();
@@ -1003,7 +1337,7 @@ namespace Networking
 
             var go = new GameObject(tagName);
             go.transform.SetParent(anchor.transform, false);
-            go.transform.localPosition = new Vector3(0f, -0.2f, 0f);
+            go.transform.localPosition = new Vector3(0f, -0.45f, 0f);
             go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             go.transform.localScale = Vector3.one * 0.18f;
 
@@ -1078,29 +1412,417 @@ namespace Networking
         {
             var nm = NetworkManager.Singleton;
             bool isConnected = nm != null && nm.IsListening;
+            bool isClientLobby = nm != null && nm.IsClient && !nm.IsHost && nm.IsConnectedClient;
+            bool inActiveLobby = isConnected && (lobbyCreated || HasActiveHostParty || isClientLobby);
+            string localName = GetLocalUserName();
 
-            // Clients always occupy slot 1 themselves.
-            // Host reads the true connected count from NetworkManager.
-            int playerCount = 1;
-            if (isConnected)
+            if (inActiveLobby)
             {
-                if (nm.IsHost && nm.ConnectedClientsIds != null)
+                RegisterLobbyNameMessagesIfReady();
+                ulong localClientId = nm.LocalClientId;
+                lobbyPlayerNames[localClientId] = localName;
+            }
+
+            List<ulong> lobbyClientIds = inActiveLobby ? GetOrderedLobbyClientIds() : new List<ulong>();
+            int playerCount = inActiveLobby ? Mathf.Clamp(lobbyClientIds.Count, 1, 3) : 1;
+
+            string slot1Name = localName;
+            string slot2Name = "Player 2";
+            string slot3Name = "Player 3";
+
+            if (inActiveLobby && lobbyClientIds.Count > 0)
+            {
+                slot1Name = GetLobbyDisplayName(lobbyClientIds[0], "Player 1");
+                if (lobbyClientIds.Count > 1)
                 {
-                    playerCount = Mathf.Clamp(nm.ConnectedClientsIds.Count, 1, 3);
+                    slot2Name = GetLobbyDisplayName(lobbyClientIds[1], "Player 2");
                 }
-                else if (!nm.IsHost && nm.IsClient)
+
+                if (lobbyClientIds.Count > 2)
                 {
-                    // Clients can't read ConnectedClientsIds accurately before the game scene;
-                    // treat any active connection as at least 2 players (host + self).
-                    playerCount = 2;
+                    slot3Name = GetLobbyDisplayName(lobbyClientIds[2], "Player 3");
                 }
             }
 
-            string localName = GetLocalUserName();
+            SetAstronautSlot(player1Visual, player1NameText, playerCount >= 1, slot1Name);
+            SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, slot2Name);
+            SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, slot3Name);
+        }
 
-            SetAstronautSlot(player1Visual, player1NameText, playerCount >= 1, localName);
-            SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, "Player 2");
-            SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, "Player 3");
+        private void InitializeAstronautFloatSlots(bool force)
+        {
+            astronautVisualSlots[0] = player1Visual;
+            astronautVisualSlots[1] = player2Visual;
+            astronautVisualSlots[2] = player3Visual;
+
+            for (int i = 0; i < astronautVisualSlots.Length; i++)
+            {
+                GameObject visual = astronautVisualSlots[i];
+                if (visual == null)
+                {
+                    astronautFloatInitialized[i] = false;
+                    continue;
+                }
+
+                if (!force && astronautFloatInitialized[i])
+                {
+                    continue;
+                }
+
+                astronautBaseLocalPositions[i] = visual.transform.localPosition;
+                astronautBaseLocalRotations[i] = visual.transform.localRotation;
+                astronautFloatOffsets[i] = Vector2.zero;
+                astronautRotationOffsets[i] = 0f;
+
+                float speed = Mathf.Lerp(astronautFloatSpeedRange.x, astronautFloatSpeedRange.y, (i + 1f) / astronautVisualSlots.Length);
+                float xDirection = i % 2 == 0 ? 1f : -1f;
+                float yDirection = i == 1 ? -1f : 1f;
+                astronautFloatVelocities[i] = new Vector2(speed * xDirection, speed * 0.72f * yDirection);
+                float rotationSpeed = Mathf.Lerp(astronautRotationSpeedRange.x, astronautRotationSpeedRange.y, i / Mathf.Max(1f, astronautVisualSlots.Length - 1f));
+                astronautRotationSpeeds[i] = rotationSpeed * (i % 2 == 0 ? 1f : -1f);
+                astronautFloatInitialized[i] = true;
+            }
+        }
+
+        private void UpdateMenuAstronautFloating()
+        {
+            if (!floatAstronautsInMenu || SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            InitializeAstronautFloatSlots(false);
+
+            for (int i = 0; i < astronautVisualSlots.Length; i++)
+            {
+                GameObject visual = astronautVisualSlots[i];
+                if (visual == null || !astronautFloatInitialized[i])
+                {
+                    continue;
+                }
+
+                Vector2 offset = astronautFloatOffsets[i] + astronautFloatVelocities[i] * Time.deltaTime;
+                Vector2 velocity = astronautFloatVelocities[i];
+
+                if (Mathf.Abs(offset.x) > astronautFloatBounds.x)
+                {
+                    offset.x = Mathf.Sign(offset.x) * astronautFloatBounds.x;
+                    velocity.x = -velocity.x;
+                }
+
+                if (Mathf.Abs(offset.y) > astronautFloatBounds.y)
+                {
+                    offset.y = Mathf.Sign(offset.y) * astronautFloatBounds.y;
+                    velocity.y = -velocity.y;
+                }
+
+                astronautFloatOffsets[i] = offset;
+                astronautFloatVelocities[i] = velocity;
+
+                float bob = Mathf.Sin((Time.time + i * 0.73f) * astronautFloatBobSpeed) * astronautFloatBobAmplitude;
+                Vector3 basePosition = astronautBaseLocalPositions[i];
+                visual.transform.localPosition = basePosition + new Vector3(offset.x, offset.y + bob, 0f);
+
+                astronautRotationOffsets[i] = Mathf.Repeat(astronautRotationOffsets[i] + astronautRotationSpeeds[i] * Time.deltaTime, 360f);
+                visual.transform.localRotation = astronautBaseLocalRotations[i] * Quaternion.Euler(0f, astronautRotationOffsets[i], 0f);
+            }
+
+            KeepNameTagsReadable();
+        }
+
+        private void KeepNameTagsReadable()
+        {
+            KeepNameTagReadable(player1NameText);
+            KeepNameTagReadable(player2NameText);
+            KeepNameTagReadable(player3NameText);
+        }
+
+        private static void KeepNameTagReadable(TextMeshPro nameText)
+        {
+            if (nameText == null)
+            {
+                return;
+            }
+
+            Camera camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            Transform textTransform = nameText.transform;
+            Vector3 directionToCamera = camera.transform.position - textTransform.position;
+            if (directionToCamera.sqrMagnitude < 0.0001f)
+            {
+                return;
+            }
+
+            textTransform.rotation = Quaternion.LookRotation(-directionToCamera.normalized, camera.transform.up);
+        }
+
+        private void RegisterLobbyNameMessagesIfReady()
+        {
+            var nm = NetworkManager.Singleton;
+            if (lobbyNameMessagesRegistered || nm == null || nm.CustomMessagingManager == null || !nm.IsListening)
+            {
+                return;
+            }
+
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(LobbyNameUpdateMessage, OnLobbyNameUpdateMessage);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(LobbyNameBroadcastMessage, OnLobbyNameBroadcastMessage);
+            lobbyNameMessagesRegistered = true;
+        }
+
+        private void UnregisterLobbyNameMessages()
+        {
+            var nm = NetworkManager.Singleton;
+            if (!lobbyNameMessagesRegistered || nm == null || nm.CustomMessagingManager == null)
+            {
+                return;
+            }
+
+            nm.CustomMessagingManager.UnregisterNamedMessageHandler(LobbyNameUpdateMessage);
+            nm.CustomMessagingManager.UnregisterNamedMessageHandler(LobbyNameBroadcastMessage);
+            lobbyNameMessagesRegistered = false;
+        }
+
+        private void SyncLocalNameIfNeeded()
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsListening)
+            {
+                return;
+            }
+
+            string localName = GetLocalUserName();
+            if (string.Equals(localName, lastSentLocalUserName, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            QueueSendLocalNameWhenReady(false);
+        }
+
+        private void QueueSendLocalNameWhenReady(bool force)
+        {
+            if (force)
+            {
+                lastSentLocalUserName = string.Empty;
+            }
+
+            if (sendLobbyNameWhenReadyCoroutine != null)
+            {
+                return;
+            }
+
+            sendLobbyNameWhenReadyCoroutine = StartCoroutine(SendLocalNameWhenReadyRoutine());
+        }
+
+        private IEnumerator SendLocalNameWhenReadyRoutine()
+        {
+            for (int attempt = 0; attempt < 60; attempt++)
+            {
+                var nm = NetworkManager.Singleton;
+                RegisterLobbyNameMessagesIfReady();
+
+                if (CanSendLobbyNameNow(nm))
+                {
+                    SendLocalNameToLobby();
+                    sendLobbyNameWhenReadyCoroutine = null;
+                    yield break;
+                }
+
+                yield return new WaitForSecondsRealtime(0.1f);
+            }
+
+            sendLobbyNameWhenReadyCoroutine = null;
+        }
+
+        private static bool CanSendLobbyNameNow(NetworkManager nm)
+        {
+            if (nm == null || !nm.IsListening || nm.CustomMessagingManager == null)
+            {
+                return false;
+            }
+
+            return nm.IsServer || nm.IsConnectedClient;
+        }
+
+        private void SendLocalNameToLobby()
+        {
+            var nm = NetworkManager.Singleton;
+            if (!CanSendLobbyNameNow(nm))
+            {
+                return;
+            }
+
+            RegisterLobbyNameMessagesIfReady();
+            if (!lobbyNameMessagesRegistered)
+            {
+                return;
+            }
+
+            string localName = GetLocalUserName();
+            lastSentLocalUserName = localName;
+            lobbyPlayerNames[nm.LocalClientId] = localName;
+
+            if (nm.IsServer)
+            {
+                BroadcastLobbyName(nm.LocalClientId, localName);
+                return;
+            }
+
+            if (nm.CustomMessagingManager == null)
+            {
+                return;
+            }
+
+            FixedString64Bytes fixedName = localName;
+            using FastBufferWriter writer = new FastBufferWriter(80, Allocator.Temp);
+            writer.WriteValueSafe(fixedName);
+            nm.CustomMessagingManager.SendNamedMessage(LobbyNameUpdateMessage, NetworkManager.ServerClientId, writer);
+        }
+
+        private void OnLobbyNameUpdateMessage(ulong senderClientId, FastBufferReader reader)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsServer)
+            {
+                return;
+            }
+
+            reader.ReadValueSafe(out FixedString64Bytes fixedName);
+            string cleanName = SanitizePlayerName(fixedName.ToString());
+            if (string.IsNullOrWhiteSpace(cleanName))
+            {
+                cleanName = GetFallbackLobbyPlayerName(senderClientId);
+            }
+
+            lobbyPlayerNames[senderClientId] = cleanName;
+            BroadcastLobbyName(senderClientId, cleanName);
+            UpdateLobbyAstronautVisuals();
+        }
+
+        private void OnLobbyNameBroadcastMessage(ulong senderClientId, FastBufferReader reader)
+        {
+            reader.ReadValueSafe(out ulong clientId);
+            reader.ReadValueSafe(out FixedString64Bytes fixedName);
+            string cleanName = SanitizePlayerName(fixedName.ToString());
+
+            if (string.IsNullOrWhiteSpace(cleanName))
+            {
+                lobbyPlayerNames.Remove(clientId);
+            }
+            else
+            {
+                lobbyPlayerNames[clientId] = cleanName;
+            }
+
+            UpdateLobbyAstronautVisuals();
+        }
+
+        private void BroadcastAllLobbyNamesToClient(ulong targetClientId)
+        {
+            foreach (var pair in lobbyPlayerNames)
+            {
+                BroadcastLobbyName(pair.Key, pair.Value, targetClientId);
+            }
+        }
+
+        private void BroadcastLobbyName(ulong clientId, string displayName)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || !nm.IsServer || nm.ConnectedClientsIds == null)
+            {
+                return;
+            }
+
+            foreach (ulong targetClientId in nm.ConnectedClientsIds)
+            {
+                BroadcastLobbyName(clientId, displayName, targetClientId);
+            }
+        }
+
+        private void BroadcastLobbyName(ulong clientId, string displayName, ulong targetClientId)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm == null || nm.CustomMessagingManager == null)
+            {
+                return;
+            }
+
+            FixedString64Bytes fixedName = SanitizePlayerName(displayName);
+            using FastBufferWriter writer = new FastBufferWriter(96, Allocator.Temp);
+            writer.WriteValueSafe(clientId);
+            writer.WriteValueSafe(fixedName);
+            nm.CustomMessagingManager.SendNamedMessage(LobbyNameBroadcastMessage, targetClientId, writer);
+        }
+
+        private List<ulong> GetOrderedLobbyClientIds()
+        {
+            List<ulong> ids = new List<ulong>();
+            var nm = NetworkManager.Singleton;
+
+            if (nm != null && nm.IsListening && nm.ConnectedClientsIds != null)
+            {
+                foreach (ulong clientId in nm.ConnectedClientsIds)
+                {
+                    if (!ids.Contains(clientId))
+                    {
+                        ids.Add(clientId);
+                    }
+                }
+            }
+
+            foreach (ulong clientId in lobbyPlayerNames.Keys)
+            {
+                if (!ids.Contains(clientId))
+                {
+                    ids.Add(clientId);
+                }
+            }
+
+            if (nm != null && nm.IsListening && !ids.Contains(nm.LocalClientId))
+            {
+                ids.Add(nm.LocalClientId);
+            }
+
+            if (ids.Count == 0)
+            {
+                ids.Add(0);
+            }
+
+            ids.Sort();
+            return ids;
+        }
+
+        private string GetFallbackLobbyPlayerName(ulong clientId)
+        {
+            List<ulong> ids = GetOrderedLobbyClientIds();
+            if (!ids.Contains(clientId))
+            {
+                ids.Add(clientId);
+                ids.Sort();
+            }
+
+            int playerNumber = Mathf.Clamp(ids.IndexOf(clientId) + 1, 1, GetLobbyPlayerLimit());
+            return $"Player {playerNumber}";
+        }
+
+        private string GetLobbyDisplayName(ulong clientId, string fallback)
+        {
+            if (lobbyPlayerNames.TryGetValue(clientId, out string displayName) && !string.IsNullOrWhiteSpace(displayName))
+            {
+                return displayName;
+            }
+
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.IsListening && clientId == nm.LocalClientId)
+            {
+                return GetLocalUserName();
+            }
+
+            return fallback;
         }
 
         private int GetLobbyPlayerCount()
@@ -1169,10 +1891,16 @@ namespace Networking
 
         private string GetLocalUserName()
         {
+            if (!string.IsNullOrWhiteSpace(cachedLocalUserName))
+            {
+                return cachedLocalUserName;
+            }
+
             string playerPrefName = PlayerPrefs.GetString("PlayerName", string.Empty);
             if (!string.IsNullOrWhiteSpace(playerPrefName))
             {
-                return playerPrefName.Trim();
+                cachedLocalUserName = SanitizePlayerName(playerPrefName);
+                return cachedLocalUserName;
             }
 
             if (UnityServices.State == ServicesInitializationState.Initialized)
@@ -1183,13 +1911,15 @@ namespace Networking
                     {
                         if (!string.IsNullOrWhiteSpace(AuthenticationService.Instance.PlayerName))
                         {
-                            return AuthenticationService.Instance.PlayerName;
+                            cachedLocalUserName = SanitizePlayerName(AuthenticationService.Instance.PlayerName);
+                            return cachedLocalUserName;
                         }
 
                         string playerId = AuthenticationService.Instance.PlayerId;
                         if (!string.IsNullOrWhiteSpace(playerId))
                         {
-                            return $"Player_{playerId.Substring(0, Mathf.Min(6, playerId.Length))}";
+                            cachedLocalUserName = $"Player_{playerId.Substring(0, Mathf.Min(6, playerId.Length))}";
+                            return cachedLocalUserName;
                         }
                     }
                 }
@@ -1200,6 +1930,37 @@ namespace Networking
             }
 
             return "You";
+        }
+
+        private static string SanitizePlayerName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = value.Trim();
+            if (trimmed.Length > 16)
+            {
+                trimmed = trimmed.Substring(0, 16);
+            }
+
+            return trimmed;
+        }
+
+        private static bool IsUsernameInputName(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                return false;
+            }
+
+            string lowerName = objectName.ToLowerInvariant();
+            return lowerName.Contains("username") ||
+                lowerName.Contains("user name") ||
+                lowerName.Contains("playername") ||
+                lowerName.Contains("player name") ||
+                lowerName.Contains("name input");
         }
 
         private void DisableLegacyMenuStartScripts()
