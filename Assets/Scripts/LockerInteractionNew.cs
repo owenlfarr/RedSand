@@ -477,7 +477,7 @@ public class LockerInteractionNew : NetworkBehaviour
             SyncLegacyHiddenClientId();
             DoorOpenNetwork.Value = true;
             SetPlayerMovementEnabled(clientId, true);
-            SendExitLockerClientRpc(clientId, false);
+            SendExitLockerToClient(clientId, false);
             return;
         }
 
@@ -486,10 +486,10 @@ public class LockerInteractionNew : NetworkBehaviour
         DoorOpenNetwork.Value = true;
         SetPlayerMovementEnabled(clientId, true);
 
-        SendExitLockerClientRpc(clientId, true);
+        SendExitLockerToClient(clientId, true);
     }
 
-    void SendExitLockerClientRpc(ulong clientId, bool killIfRush)
+    private void SendExitLockerToClient(ulong clientId, bool killIfRush)
     {
         ClientRpcParams clientRpcParams = new ClientRpcParams
         {
