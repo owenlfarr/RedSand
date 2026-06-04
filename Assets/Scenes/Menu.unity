@@ -36456,6 +36456,7 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   outageCheckInterval: 60
   outageChance: 0.16
+  maxConsecutiveSafeChecks: 4
   whiteLights:
   - {fileID: 1445667169}
   - {fileID: 598403194}

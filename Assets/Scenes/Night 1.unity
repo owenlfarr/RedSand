@@ -824,7 +824,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 187e936701d01d440b486ff1a51a506f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  nextSceneName: WinScene
+  nextSceneName: MainMenu
   bunkerEndingPosition: {fileID: 206608526}
   lightRoots:
   - {fileID: 2039015375}
@@ -48299,6 +48299,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   outageCheckInterval: 60
   outageChance: 0.16
+  maxConsecutiveSafeChecks: 4
   whiteLights:
   - {fileID: 1445667169}
   - {fileID: 598403194}
@@ -50276,9 +50277,9 @@ MonoBehaviour:
   secondsPerHour: 90
   startHour: 22
   endHour: 8
-  useCustomEndingTime: 1
+  useCustomEndingTime: 0
   endingSequenceTriggerTime: 540
-  nextSceneName: Night2
+  nextSceneName: MainMenu
   difficultyIncreasePerHour: 0.02
 --- !u!4 &2064945791
 Transform:

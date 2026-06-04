@@ -233,10 +233,21 @@ public class BunkerEndingSequence : NetworkBehaviour
 
         yield return StartCoroutine(RunEndingCards());
 
-        if (!string.IsNullOrEmpty(nextSceneName) && !IsNetworkSessionActive())
+        if (!string.IsNullOrEmpty(nextSceneName))
         {
             Time.timeScale = 1f;
-            SceneManager.LoadScene(nextSceneName);
+
+            if (IsNetworkSessionActive())
+            {
+                if (IsServer)
+                {
+                    NetworkManager.Singleton.SceneManager.LoadScene(nextSceneName, LoadSceneMode.Single);
+                }
+            }
+            else
+            {
+                SceneManager.LoadScene(nextSceneName);
+            }
         }
     }
 

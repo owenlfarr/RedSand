@@ -96,6 +96,11 @@ public class ZombieAI : NetworkBehaviour
     [Header("References")]
     public Transform bodyTransform;
 
+    [Header("Visibility")]
+    [Tooltip("Monster renderers are hidden beyond this distance so bunker lights remain the long-range guide.")]
+    [Min(0f)]
+    public float maxVisibleDistance = 45f;
+
     [Header("Jumpscare")]
     [Tooltip("Image to show when zombie catches player")]
     public Texture2D zombieJumpscareImage;
@@ -332,11 +337,13 @@ public class ZombieAI : NetworkBehaviour
                 ApplyNetworkStateToClient();
             }
 
+            UpdateDistanceVisibility();
             return;
         }
 
         // Fallback path for offline play or scene objects that are not network-spawned yet.
         UpdateOfflineAI();
+        UpdateDistanceVisibility();
     }
 
     void UpdateServerAI()
@@ -762,6 +769,45 @@ public class ZombieAI : NetworkBehaviour
 
     void ApplyNeutralizedVisuals(bool neutralized)
     {
+        SetRendererVisibility(!neutralized && IsWithinVisibleDistance());
+    }
+
+    private void UpdateDistanceVisibility()
+    {
+        bool neutralized = IsNetworkSessionActive() && IsSpawned && IsNeutralizedNetwork.Value;
+        SetRendererVisibility(!neutralized && IsWithinVisibleDistance());
+    }
+
+    private bool IsWithinVisibleDistance()
+    {
+        if (maxVisibleDistance <= 0f)
+        {
+            return true;
+        }
+
+        Transform localPlayer = GetLocalPlayerTransform();
+        if (localPlayer == null)
+        {
+            return true;
+        }
+
+        return (localPlayer.position - transform.position).sqrMagnitude <= maxVisibleDistance * maxVisibleDistance;
+    }
+
+    private Transform GetLocalPlayerTransform()
+    {
+        if (IsNetworkSessionActive() && NetworkManager.Singleton != null &&
+            NetworkManager.Singleton.LocalClient != null &&
+            NetworkManager.Singleton.LocalClient.PlayerObject != null)
+        {
+            return NetworkManager.Singleton.LocalClient.PlayerObject.transform;
+        }
+
+        return playerTransform;
+    }
+
+    private void SetRendererVisibility(bool visible)
+    {
         if (cachedRenderers == null)
         {
             cachedRenderers = GetComponentsInChildren<Renderer>(true);
@@ -771,7 +817,7 @@ public class ZombieAI : NetworkBehaviour
         {
             if (renderer != null)
             {
-                renderer.enabled = !neutralized;
+                renderer.enabled = visible;
             }
         }
     }

@@ -83,8 +83,6 @@ public class RushMonsterEvent : NetworkBehaviour
     private float nextCheckTime;
     private bool[] originalWhiteLightStates;
     private bool[] originalRedLightStates;
-    private bool isFirstEvent = true;
-
     private RushMonsterUI rushUI;
     private Canvas gameCanvas;
     private GameObject jumpscarePanel;
@@ -325,10 +323,9 @@ public class RushMonsterEvent : NetworkBehaviour
             audioSource.PlayOneShot(rushApproachingSound);
         }
 
-        if (IsLocalPlayerInBunker() && rushUI != null && isFirstEvent)
+        if (IsLocalPlayerInBunker() && rushUI != null)
         {
             rushUI.ShowWarning("something is coming...");
-            isFirstEvent = false;
         }
 
         yield return StartCoroutine(FlickerLightsLocal());
@@ -343,7 +340,7 @@ public class RushMonsterEvent : NetworkBehaviour
             }
 
             RestoreLightsLocal();
-            isEventActive = false;
+            FinishOfflineEvent();
             yield break;
         }
 
@@ -376,7 +373,7 @@ public class RushMonsterEvent : NetworkBehaviour
             KillPlayerOffline();
         }
 
-        isEventActive = false;
+        FinishOfflineEvent();
     }
 
     IEnumerator ExecuteRushEventServer()
@@ -384,11 +381,7 @@ public class RushMonsterEvent : NetworkBehaviour
         isEventActive = true;
         IsEventActiveNetwork.Value = true;
 
-        if (isFirstEvent)
-        {
-            RushWarningClientRpc("something is coming...");
-            isFirstEvent = false;
-        }
+        RushWarningClientRpc("something is coming...");
 
         FlickerClientRpc();
 
@@ -437,6 +430,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
         isEventActive = false;
         IsEventActiveNetwork.Value = false;
+        nextCheckTime = Time.time + checkInterval;
     }
 
     [ClientRpc]
@@ -592,7 +586,7 @@ public class RushMonsterEvent : NetworkBehaviour
             {
                 if (light != null)
                 {
-                    light.enabled = true;
+                    light.enabled = PowerSystem.Instance == null || !PowerSystem.Instance.IsPowerOut;
                 }
             }
 
@@ -614,7 +608,7 @@ public class RushMonsterEvent : NetworkBehaviour
         {
             if (light != null)
             {
-                light.enabled = true;
+                light.enabled = PowerSystem.Instance == null || !PowerSystem.Instance.IsPowerOut;
             }
         }
     }
@@ -646,6 +640,12 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void RestoreLightsLocal()
     {
+        if (PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut)
+        {
+            PowerSystem.Instance.ApplyCurrentPowerState();
+            return;
+        }
+
         if (whiteLights != null && originalWhiteLightStates != null)
         {
             for (int i = 0; i < whiteLights.Length && i < originalWhiteLightStates.Length; i++)
@@ -926,5 +926,11 @@ public class RushMonsterEvent : NetworkBehaviour
     public bool IsEventActive()
     {
         return IsNetworkSessionActive() ? IsEventActiveNetwork.Value : isEventActive;
+    }
+
+    private void FinishOfflineEvent()
+    {
+        isEventActive = false;
+        nextCheckTime = Time.time + checkInterval;
     }
 }

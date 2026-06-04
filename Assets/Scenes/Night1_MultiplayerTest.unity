@@ -826,7 +826,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
-  nextSceneName: WinScene
+  nextSceneName: MainMenu
   bunkerEndingPosition: {fileID: 206608526}
   lightRoots:
   - {fileID: 2039015375}
@@ -5234,6 +5234,7 @@ MonoBehaviour:
     m_Bits: 4294967295
   maxTiltAngle: 30
   bodyTransform: {fileID: 0}
+  maxVisibleDistance: 45
   zombieJumpscareImage: {fileID: 2800000, guid: 83816b6fbd2ea024cadb3a9c0fce590a, type: 3}
   zombieJumpscareSound: {fileID: 8300000, guid: 55beef11e6cbfb24ba9d1c0d65b4acb4, type: 3}
   jumpscareDisplayTime: 2
@@ -51807,6 +51808,7 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   outageCheckInterval: 60
   outageChance: 0.16
+  maxConsecutiveSafeChecks: 4
   whiteLights:
   - {fileID: 1445667169}
   - {fileID: 598403194}
@@ -54094,9 +54096,9 @@ MonoBehaviour:
   secondsPerHour: 90
   startHour: 22
   endHour: 8
-  useCustomEndingTime: 1
+  useCustomEndingTime: 0
   endingSequenceTriggerTime: 600
-  nextSceneName: WinScene
+  nextSceneName: MainMenu
   difficultyIncreasePerHour: 0.02
   CurrentHourNetwork:
     m_InternalValue: 0

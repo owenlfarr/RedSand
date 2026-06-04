@@ -110,6 +110,8 @@ public class SolarFlareSystem : NetworkBehaviour
     private const string REPAIR_COMPASS_LABEL = "REPAIR NEEDED";
     private const ulong INVALID_CLIENT_ID = ulong.MaxValue;
 
+    public bool IsFlareActive => IsNetworkSessionActive() ? IsFlareActiveNetwork.Value : isFlareActive;
+
     void Awake()
     {
         if (Instance == null)
@@ -347,6 +349,11 @@ public class SolarFlareSystem : NetworkBehaviour
     void TriggerSolarFlare()
     {
         if (IsNetworkSessionActive() && !IsServer)
+        {
+            return;
+        }
+
+        if (isFlareActive || (PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut))
         {
             return;
         }
@@ -800,13 +807,7 @@ public class SolarFlareSystem : NetworkBehaviour
             powerSystem.enabled = true;
         }
 
-        foreach (Light light in bunkerLights)
-        {
-            if (light != null)
-            {
-                light.enabled = true;
-            }
-        }
+        RestoreBunkerLightsForCurrentPowerState();
 
         if (warningText != null)
         {
@@ -929,13 +930,7 @@ public class SolarFlareSystem : NetworkBehaviour
         // Do NOT re-enable components — they were never disabled in the multiplayer path.
         // Systems gate access via IsFlareActiveNetwork.Value which is already cleared by the server.
 
-        foreach (Light light in bunkerLights)
-        {
-            if (light != null)
-            {
-                light.enabled = true;
-            }
-        }
+        RestoreBunkerLightsForCurrentPowerState();
 
         if (warningText != null)
         {
@@ -1094,6 +1089,23 @@ public class SolarFlareSystem : NetworkBehaviour
     private bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private void RestoreBunkerLightsForCurrentPowerState()
+    {
+        if (PowerSystem.Instance != null)
+        {
+            PowerSystem.Instance.ApplyCurrentPowerState();
+            return;
+        }
+
+        foreach (Light light in bunkerLights)
+        {
+            if (light != null)
+            {
+                light.enabled = true;
+            }
+        }
     }
 
     IEnumerator RestoreSkyColor()

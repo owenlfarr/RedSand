@@ -16,6 +16,10 @@ public class PowerSystem : NetworkBehaviour
     [Range(0f, 1f)]
     public float outageChance = 0.2f;
 
+    [Tooltip("Maximum number of outage checks that can pass without an outage")]
+    [Min(1)]
+    public int maxConsecutiveSafeChecks = 4;
+
     [Header("Light Groups")]
     [Tooltip("White lights that turn off during power outage")]
     public Light[] whiteLights;
@@ -43,6 +47,7 @@ public class PowerSystem : NetworkBehaviour
     private Transform playerTransform;
     private bool isPlayerNearPowerBox = false;
     private AudioSource audioSource;
+    private int consecutiveSafeChecks;
 
     public NetworkVariable<bool> IsPowerOutNetwork = new NetworkVariable<bool>(
         false,
@@ -162,6 +167,14 @@ public class PowerSystem : NetworkBehaviour
         }
     }
 
+    void LateUpdate()
+    {
+        if (IsPowerOut)
+        {
+            SetPowerState(false);
+        }
+    }
+
     void CheckForPowerOutage()
     {
         if (IsNetworkSessionActive() && !IsServer)
@@ -169,10 +182,12 @@ public class PowerSystem : NetworkBehaviour
             return;
         }
 
-        if (isPowerOut) return;
+        if (isPowerOut || IsSolarFlareActive()) return;
 
         float randomValue = Random.value;
-        if (randomValue <= outageChance)
+        consecutiveSafeChecks++;
+        int safeCheckLimit = maxConsecutiveSafeChecks > 0 ? maxConsecutiveSafeChecks : 4;
+        if (randomValue <= outageChance || consecutiveSafeChecks >= safeCheckLimit)
         {
             TriggerPowerOutage();
         }
@@ -185,7 +200,13 @@ public class PowerSystem : NetworkBehaviour
             return;
         }
 
+        if (isPowerOut || IsSolarFlareActive())
+        {
+            return;
+        }
+
         isPowerOut = true;
+        consecutiveSafeChecks = 0;
         if (IsNetworkSessionActive())
         {
             IsPowerOutNetwork.Value = true;
@@ -204,6 +225,8 @@ public class PowerSystem : NetworkBehaviour
 
         DefenseSystem defense = FindObjectOfType<DefenseSystem>();
         if (defense != null) defense.ForceHidePrompt();
+
+        SetPowerState(false);
 
         if (audioSource != null && powerOutSound != null)
         {
@@ -279,6 +302,7 @@ public class PowerSystem : NetworkBehaviour
         }
 
         ResetAllSystemCooldowns();
+        SetPowerState(true);
 
         if (audioSource != null && powerRestoreSound != null)
         {
@@ -305,9 +329,14 @@ public class PowerSystem : NetworkBehaviour
         {
             if (light != null)
             {
-                light.enabled = !powerOn;
+                light.enabled = false;
             }
         }
+    }
+
+    public void ApplyCurrentPowerState()
+    {
+        SetPowerState(!IsPowerOut);
     }
 
     void ResetAllSystemCooldowns()
@@ -419,6 +448,11 @@ public class PowerSystem : NetworkBehaviour
     private bool IsNetworkSessionActive()
     {
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
+    }
+
+    private bool IsSolarFlareActive()
+    {
+        return SolarFlareSystem.Instance != null && SolarFlareSystem.Instance.IsFlareActive;
     }
 
     private void RefreshLocalPlayerTransform()

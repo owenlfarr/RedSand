@@ -9,7 +9,7 @@ public class PlayerDeathSpectator : MonoBehaviour
 {
     [Header("Spectating")]
     public string spectatorCameraName = "Spectator Cam";
-    public float blackScreenDuration = 5f;
+    public float spectatorActivationDelay = 4f;
     public float fadeDuration = 1f;
 
     private OxygenSystem oxygenSystem;
@@ -150,9 +150,9 @@ public class PlayerDeathSpectator : MonoBehaviour
             previousAudioPause = AudioListener.pause;
             AudioListener.volume = 0f;
             AudioListener.pause = true;
-
-            yield return new WaitForSecondsRealtime(blackScreenDuration);
         }
+
+        yield return new WaitForSecondsRealtime(spectatorActivationDelay);
 
         SelectFirstSpectateTarget();
 
