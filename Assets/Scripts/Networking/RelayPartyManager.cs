@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
@@ -33,12 +34,17 @@ namespace Networking
         [SerializeField] private Button startGameButton;
         [SerializeField] private Button backButton;
         [SerializeField] private Button leaveLobbyButton;
+        [SerializeField] private Button settingsButton;
+        [SerializeField] private Button settingsBackButton;
         [SerializeField] private TMP_InputField joinCodeInputField;
         [SerializeField] private TMP_InputField usernameInputField;
         [SerializeField] private TMP_Text lobbyCodeText;
         [SerializeField] private Button lobbyCodeDisplayButton;
         [SerializeField] private bool showLegacyOnGUI = false;
         [SerializeField] private TMP_Text loadingIndicatorText;
+        [SerializeField] private GameObject settingsPanel;
+        [SerializeField] private Slider sensitivitySlider;
+        [SerializeField] private TMP_Text sensitivityValueText;
 
         [Header("Lobby Astronauts (Optional)")]
         [SerializeField] private GameObject player1Visual;
@@ -71,6 +77,7 @@ namespace Networking
         private int nextManualSpawnIndex;
         private Coroutine spawnPlayersAfterLoadCoroutine;
         private Coroutine sendLobbyNameWhenReadyCoroutine;
+        private bool sentInitialNameAfterConnect;
         private readonly GameObject[] astronautVisualSlots = new GameObject[3];
         private readonly Vector3[] astronautBaseLocalPositions = new Vector3[3];
         private readonly Quaternion[] astronautBaseLocalRotations = new Quaternion[3];
@@ -87,6 +94,7 @@ namespace Networking
         private const string LobbyNameUpdateMessage = "RelayPartyNameUpdate";
         private const string LobbyNameBroadcastMessage = "RelayPartyNameBroadcast";
         private const int HardLobbyPlayerLimit = 3;
+        private const string MouseSensitivityPrefsKey = "MouseSensitivity";
 
         // Kept as a fallback if an older scene or inspector state has no player prefab at match start.
         private GameObject _lobbyPlayerPrefab;
@@ -108,11 +116,14 @@ namespace Networking
             {
                 voiceChatManager = FindObjectOfType<VoiceChatManager>(true);
             }
+            EnsureMenuEventSystem();
             AutoBindMenuUI();
             EnsureUsernameInputExists();
             EnsureLeaveLobbyButtonExists();
+            EnsureSettingsTabExists();
             WireMenuUI();
             WireUsernameInput();
+            WireSettingsUI();
             SetLobbyUIState(false);
             RefreshLobbyCodeUI();
             AutoBindLobbyVisuals();
@@ -131,6 +142,7 @@ namespace Networking
 
             UpdateLoadingIndicator();
             RegisterLobbyNameMessagesIfReady();
+            SendInitialNameAfterClientConnect();
             SyncLocalNameIfNeeded();
             UpdateMenuAstronautFloating();
             UpdateLobbyAstronautVisuals();
@@ -504,6 +516,7 @@ namespace Networking
                 statusText = nm.IsServer ? statusText : "Joined! Waiting for host to start...";
                 SetLobbyUIState(true);
                 RefreshLobbyCodeUI();
+                sentInitialNameAfterConnect = false;
                 QueueSendLocalNameWhenReady(true);
             }
 
@@ -516,6 +529,7 @@ namespace Networking
 
                 BroadcastLobbyName(clientId, lobbyPlayerNames[clientId]);
                 BroadcastAllLobbyNamesToClient(clientId);
+                BroadcastAllLobbyNames();
             }
 
             UpdateLobbyAstronautVisuals();
@@ -556,6 +570,7 @@ namespace Networking
         {
             lobbyPlayerNames.Clear();
             lastSentLocalUserName = string.Empty;
+            sentInitialNameAfterConnect = false;
 
             if (sendLobbyNameWhenReadyCoroutine != null)
             {
@@ -876,9 +891,11 @@ namespace Networking
                 return;
             }
 
-            if (createLobbyButton == null)
+            if (createLobbyButton == null || IsLobbyCodeDisplayName(createLobbyButton.name))
             {
-                createLobbyButton = FindButtonByNameContains("create");
+                createLobbyButton = FindButtonByExactName("CreateLobby")
+                    ?? FindButtonByExactName("Create Lobby")
+                    ?? FindButtonByNameContains("create lobby");
             }
 
             if (joinLobbyButton == null)
@@ -904,6 +921,12 @@ namespace Networking
             {
                 leaveLobbyButton = FindButtonByNameContains("leave lobby")
                     ?? FindButtonByNameContains("leave");
+            }
+
+            if (settingsButton == null)
+            {
+                settingsButton = FindButtonByNameContains("settings")
+                    ?? FindButtonByNameContains("setting");
             }
 
             if (joinCodeInputField == null)
@@ -962,37 +985,44 @@ namespace Networking
         {
             if (createLobbyButton != null)
             {
-                createLobbyButton.onClick.RemoveAllListeners();
                 createLobbyButton.onClick.RemoveListener(CreateLobbyFromUI);
                 createLobbyButton.onClick.AddListener(CreateLobbyFromUI);
+                createLobbyButton.interactable = true;
             }
 
             if (joinLobbyButton != null)
             {
-                joinLobbyButton.onClick.RemoveAllListeners();
                 joinLobbyButton.onClick.RemoveListener(JoinLobbyFromUI);
                 joinLobbyButton.onClick.AddListener(JoinLobbyFromUI);
+                joinLobbyButton.interactable = true;
             }
 
             if (startGameButton != null)
             {
-                startGameButton.onClick.RemoveAllListeners();
                 startGameButton.onClick.RemoveListener(StartMatchFromUI);
                 startGameButton.onClick.AddListener(StartMatchFromUI);
+                startGameButton.interactable = true;
             }
 
             if (backButton != null)
             {
-                backButton.onClick.RemoveAllListeners();
                 backButton.onClick.RemoveListener(BackFromUI);
                 backButton.onClick.AddListener(BackFromUI);
+                backButton.interactable = true;
             }
 
             if (leaveLobbyButton != null)
             {
-                leaveLobbyButton.onClick.RemoveAllListeners();
                 leaveLobbyButton.onClick.RemoveListener(LeaveLobbyFromUI);
                 leaveLobbyButton.onClick.AddListener(LeaveLobbyFromUI);
+                leaveLobbyButton.interactable = true;
+            }
+
+            if (settingsButton != null)
+            {
+                settingsButton.onClick.RemoveListener(OpenSettingsFromUI);
+                settingsButton.onClick.AddListener(OpenSettingsFromUI);
+                settingsButton.interactable = true;
             }
 
             if (joinCodeInputField != null)
@@ -1163,6 +1193,221 @@ namespace Networking
             label.alignment = TextAlignmentOptions.Center;
         }
 
+        private void EnsureSettingsTabExists()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            Canvas canvas = FindObjectByNameContains<Canvas>("canvas");
+            if (canvas == null)
+            {
+                var canvases = GetAllSceneObjectsOfType<Canvas>();
+                if (canvases.Length > 0)
+                {
+                    canvas = canvases[0];
+                }
+            }
+
+            if (canvas == null)
+            {
+                return;
+            }
+
+            if (canvas.GetComponent<GraphicRaycaster>() == null)
+            {
+                canvas.gameObject.AddComponent<GraphicRaycaster>();
+            }
+
+            if (settingsButton == null)
+            {
+                settingsButton = CreateMenuButton(canvas.transform, "SettingsButton", "Settings", new Vector2(0f, 1f), new Vector2(180f, 42f), new Vector2(118f, -82f), TextAlignmentOptions.Center);
+            }
+
+            if (settingsPanel != null)
+            {
+                return;
+            }
+
+            settingsPanel = new GameObject("SettingsPanel");
+            settingsPanel.transform.SetParent(canvas.transform, false);
+
+            RectTransform panelRect = settingsPanel.AddComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRect.pivot = new Vector2(0.5f, 0.5f);
+            panelRect.anchoredPosition = Vector2.zero;
+            panelRect.sizeDelta = new Vector2(560f, 360f);
+
+            Image panelBackground = settingsPanel.AddComponent<Image>();
+            panelBackground.color = new Color(0.015f, 0.025f, 0.025f, 0.96f);
+
+            Outline outline = settingsPanel.AddComponent<Outline>();
+            outline.effectColor = new Color(0.65f, 0.1f, 0.08f, 0.95f);
+            outline.effectDistance = new Vector2(2f, -2f);
+
+            TextMeshProUGUI title = CreateMenuText(settingsPanel.transform, "Title", "SETTINGS", 34f, Color.white, TextAlignmentOptions.Center);
+            SetMenuRect(title.gameObject, new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(500f, 52f));
+
+            TextMeshProUGUI label = CreateMenuText(settingsPanel.transform, "SensitivityLabel", "MOUSE SENSITIVITY", 20f, new Color(0.65f, 0.95f, 1f), TextAlignmentOptions.Left);
+            SetMenuRect(label.gameObject, new Vector2(0.5f, 0.5f), new Vector2(-95f, 55f), new Vector2(290f, 36f));
+
+            sensitivityValueText = CreateMenuText(settingsPanel.transform, "SensitivityValue", "", 20f, Color.white, TextAlignmentOptions.Right);
+            SetMenuRect(sensitivityValueText.gameObject, new Vector2(0.5f, 0.5f), new Vector2(190f, 55f), new Vector2(110f, 36f));
+
+            GameObject sliderObject = new GameObject("SensitivitySlider");
+            sliderObject.transform.SetParent(settingsPanel.transform, false);
+            SetMenuRect(sliderObject, new Vector2(0.5f, 0.5f), new Vector2(0f, 5f), new Vector2(420f, 32f));
+
+            Image sliderBackground = sliderObject.AddComponent<Image>();
+            sliderBackground.color = new Color(0.04f, 0.07f, 0.08f, 0.95f);
+
+            GameObject fillArea = new GameObject("Fill Area");
+            fillArea.transform.SetParent(sliderObject.transform, false);
+            RectTransform fillAreaRect = fillArea.AddComponent<RectTransform>();
+            fillAreaRect.anchorMin = Vector2.zero;
+            fillAreaRect.anchorMax = Vector2.one;
+            fillAreaRect.offsetMin = new Vector2(10f, 8f);
+            fillAreaRect.offsetMax = new Vector2(-10f, -8f);
+
+            GameObject fillObject = new GameObject("Fill");
+            fillObject.transform.SetParent(fillArea.transform, false);
+            RectTransform fillRect = fillObject.AddComponent<RectTransform>();
+            fillRect.anchorMin = Vector2.zero;
+            fillRect.anchorMax = Vector2.one;
+            fillRect.offsetMin = Vector2.zero;
+            fillRect.offsetMax = Vector2.zero;
+            Image fillImage = fillObject.AddComponent<Image>();
+            fillImage.color = new Color(0.65f, 0.1f, 0.08f, 1f);
+
+            GameObject handleObject = new GameObject("Handle");
+            handleObject.transform.SetParent(sliderObject.transform, false);
+            SetMenuRect(handleObject, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(22f, 42f));
+            Image handleImage = handleObject.AddComponent<Image>();
+            handleImage.color = new Color(0.9f, 0.95f, 0.92f, 1f);
+
+            sensitivitySlider = sliderObject.AddComponent<Slider>();
+            sensitivitySlider.minValue = 0.25f;
+            sensitivitySlider.maxValue = 8f;
+            sensitivitySlider.targetGraphic = handleImage;
+            sensitivitySlider.fillRect = fillRect;
+            sensitivitySlider.handleRect = handleImage.rectTransform;
+
+            settingsBackButton = CreateMenuButton(settingsPanel.transform, "SettingsBackButton", "Back", new Vector2(0.5f, 0.5f), new Vector2(220f, 46f), new Vector2(0f, -105f), TextAlignmentOptions.Center);
+            settingsPanel.SetActive(false);
+        }
+
+        private void WireSettingsUI()
+        {
+            if (settingsBackButton != null)
+            {
+                settingsBackButton.onClick.RemoveListener(CloseSettingsFromUI);
+                settingsBackButton.onClick.AddListener(CloseSettingsFromUI);
+                settingsBackButton.interactable = true;
+            }
+
+            if (sensitivitySlider != null)
+            {
+                sensitivitySlider.onValueChanged.RemoveListener(OnSensitivityChanged);
+                sensitivitySlider.onValueChanged.AddListener(OnSensitivityChanged);
+                sensitivitySlider.SetValueWithoutNotify(PlayerPrefs.GetFloat(MouseSensitivityPrefsKey, 2f));
+                OnSensitivityChanged(sensitivitySlider.value);
+            }
+        }
+
+        public void OpenSettingsFromUI()
+        {
+            if (settingsPanel != null)
+            {
+                settingsPanel.SetActive(true);
+            }
+        }
+
+        public void CloseSettingsFromUI()
+        {
+            if (settingsPanel != null)
+            {
+                settingsPanel.SetActive(false);
+            }
+        }
+
+        private void OnSensitivityChanged(float value)
+        {
+            float rounded = Mathf.Round(value * 100f) / 100f;
+            PlayerPrefs.SetFloat(MouseSensitivityPrefsKey, rounded);
+            PlayerPrefs.Save();
+
+            if (sensitivityValueText != null)
+            {
+                sensitivityValueText.text = rounded.ToString("0.00");
+            }
+        }
+
+        private static Button CreateMenuButton(Transform parent, string name, string labelText, Vector2 anchor, Vector2 size, Vector2 position, TextAlignmentOptions alignment)
+        {
+            GameObject buttonObject = new GameObject(name);
+            buttonObject.transform.SetParent(parent, false);
+            SetMenuRect(buttonObject, anchor, position, size);
+
+            Image background = buttonObject.AddComponent<Image>();
+            background.color = new Color(0.055f, 0.095f, 0.1f, 0.95f);
+
+            Button button = buttonObject.AddComponent<Button>();
+            button.targetGraphic = background;
+
+            TextMeshProUGUI label = CreateMenuText(buttonObject.transform, "Text", labelText, 22f, Color.white, alignment);
+            SetMenuRect(label.gameObject, new Vector2(0.5f, 0.5f), Vector2.zero, size);
+
+            return button;
+        }
+
+        private static TextMeshProUGUI CreateMenuText(Transform parent, string name, string text, float fontSize, Color color, TextAlignmentOptions alignment)
+        {
+            GameObject textObject = new GameObject(name);
+            textObject.transform.SetParent(parent, false);
+            TextMeshProUGUI textComponent = textObject.AddComponent<TextMeshProUGUI>();
+            textComponent.text = text;
+            textComponent.fontSize = fontSize;
+            textComponent.color = color;
+            textComponent.alignment = alignment;
+            textComponent.fontStyle = FontStyles.Bold;
+            textComponent.enableWordWrapping = false;
+            return textComponent;
+        }
+
+        private static void SetMenuRect(GameObject target, Vector2 anchor, Vector2 position, Vector2 size)
+        {
+            RectTransform rect = target.GetComponent<RectTransform>();
+            if (rect == null)
+            {
+                rect = target.AddComponent<RectTransform>();
+            }
+
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+        }
+
+        private void EnsureMenuEventSystem()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            if (FindObjectOfType<EventSystem>() != null)
+            {
+                return;
+            }
+
+            GameObject eventSystem = new GameObject("EventSystem");
+            eventSystem.AddComponent<EventSystem>();
+            eventSystem.AddComponent<StandaloneInputModule>();
+        }
+
         private string ReadJoinCodeFromUI()
         {
             string code = joinCodeInputField != null ? joinCodeInputField.text : string.Empty;
@@ -1230,21 +1475,22 @@ namespace Networking
         {
             bool showCreateAndJoin = !created;
             var nm = NetworkManager.Singleton;
-            bool isHostLobby = created && nm != null && nm.IsHost;
+            bool showOnlyLeave = created && nm != null && nm.IsListening;
+            bool isHostLobby = false;
 
             if (createLobbyButton != null)
             {
-                createLobbyButton.gameObject.SetActive(showCreateAndJoin);
+                createLobbyButton.gameObject.SetActive(showCreateAndJoin && !showOnlyLeave);
             }
 
             if (joinLobbyButton != null)
             {
-                joinLobbyButton.gameObject.SetActive(showCreateAndJoin);
+                joinLobbyButton.gameObject.SetActive(showCreateAndJoin && !showOnlyLeave);
             }
 
             if (joinCodeInputField != null)
             {
-                joinCodeInputField.gameObject.SetActive(showCreateAndJoin);
+                joinCodeInputField.gameObject.SetActive(showCreateAndJoin && !showOnlyLeave);
             }
 
             if (lobbyCodeDisplayButton != null)
@@ -1259,17 +1505,27 @@ namespace Networking
 
             if (startGameButton != null)
             {
-                startGameButton.gameObject.SetActive(isHostLobby);
+                startGameButton.gameObject.SetActive(isHostLobby && !showOnlyLeave);
             }
 
             if (backButton != null)
             {
-                backButton.gameObject.SetActive(isHostLobby);
+                backButton.gameObject.SetActive(isHostLobby && !showOnlyLeave);
             }
 
             if (leaveLobbyButton != null)
             {
                 leaveLobbyButton.gameObject.SetActive(created);
+            }
+
+            if (settingsButton != null)
+            {
+                settingsButton.gameObject.SetActive(!showOnlyLeave);
+            }
+
+            if (settingsPanel != null && showOnlyLeave)
+            {
+                settingsPanel.SetActive(false);
             }
         }
 
@@ -1603,6 +1859,18 @@ namespace Networking
             QueueSendLocalNameWhenReady(false);
         }
 
+        private void SendInitialNameAfterClientConnect()
+        {
+            var nm = NetworkManager.Singleton;
+            if (sentInitialNameAfterConnect || nm == null || !nm.IsClient || nm.IsHost || !nm.IsConnectedClient)
+            {
+                return;
+            }
+
+            sentInitialNameAfterConnect = true;
+            QueueSendLocalNameWhenReady(true);
+        }
+
         private void QueueSendLocalNameWhenReady(bool force)
         {
             if (force)
@@ -1669,6 +1937,7 @@ namespace Networking
             if (nm.IsServer)
             {
                 BroadcastLobbyName(nm.LocalClientId, localName);
+                BroadcastAllLobbyNames();
                 return;
             }
 
@@ -1700,6 +1969,7 @@ namespace Networking
 
             lobbyPlayerNames[senderClientId] = cleanName;
             BroadcastLobbyName(senderClientId, cleanName);
+            BroadcastAllLobbyNames();
             UpdateLobbyAstronautVisuals();
         }
 
@@ -1726,6 +1996,14 @@ namespace Networking
             foreach (var pair in lobbyPlayerNames)
             {
                 BroadcastLobbyName(pair.Key, pair.Value, targetClientId);
+            }
+        }
+
+        private void BroadcastAllLobbyNames()
+        {
+            foreach (var pair in lobbyPlayerNames)
+            {
+                BroadcastLobbyName(pair.Key, pair.Value);
             }
         }
 
@@ -1963,6 +2241,19 @@ namespace Networking
                 lowerName.Contains("name input");
         }
 
+        private static bool IsLobbyCodeDisplayName(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                return false;
+            }
+
+            string lowerName = objectName.ToLowerInvariant();
+            return lowerName.Contains("created lobby code") ||
+                lowerName.Contains("lobby code") ||
+                lowerName.Contains("code display");
+        }
+
         private void DisableLegacyMenuStartScripts()
         {
             if (SceneManager.GetActiveScene().name != menuSceneName)
@@ -2005,6 +2296,25 @@ namespace Networking
                     return button;
                 }
             }
+            return null;
+        }
+
+        private static Button FindButtonByExactName(string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(objectName))
+            {
+                return null;
+            }
+
+            Button[] buttons = GetAllSceneObjectsOfType<Button>();
+            foreach (Button button in buttons)
+            {
+                if (button != null && string.Equals(button.name, objectName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return button;
+                }
+            }
+
             return null;
         }
 
