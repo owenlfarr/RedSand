@@ -111,6 +111,7 @@ namespace Networking
         private async void Start()
         {
             NormalizeLegacySceneTarget();
+            UnlockCursorForMenu();
             DisableLegacyMenuStartScripts();
             if (voiceChatManager == null)
             {
@@ -140,6 +141,7 @@ namespace Networking
                 return;
             }
 
+            UnlockCursorForMenu();
             UpdateLoadingIndicator();
             RegisterLobbyNameMessagesIfReady();
             SendInitialNameAfterClientConnect();
@@ -771,6 +773,12 @@ namespace Networking
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            if (string.Equals(scene.name, menuSceneName, StringComparison.Ordinal))
+            {
+                matchStarted = false;
+                UnlockCursorForMenu();
+            }
+
             if (!string.Equals(scene.name, multiplayerSceneName, StringComparison.Ordinal))
             {
                 return;
@@ -1406,6 +1414,17 @@ namespace Networking
             GameObject eventSystem = new GameObject("EventSystem");
             eventSystem.AddComponent<EventSystem>();
             eventSystem.AddComponent<StandaloneInputModule>();
+        }
+
+        private void UnlockCursorForMenu()
+        {
+            if (SceneManager.GetActiveScene().name != menuSceneName)
+            {
+                return;
+            }
+
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
         }
 
         private string ReadJoinCodeFromUI()

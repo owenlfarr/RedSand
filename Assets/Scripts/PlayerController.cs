@@ -168,7 +168,8 @@ public class PlayerController : NetworkBehaviour
             cameraAudioListener.enabled = isLocal;
         }
 
-        bool isMenuScene = SceneManager.GetActiveScene().name == "Menu";
+        string activeSceneName = SceneManager.GetActiveScene().name;
+        bool isMenuScene = activeSceneName == "Menu" || activeSceneName == "MainMenu";
 
         if (isLocal && !isMenuScene)
         {
