@@ -50278,7 +50278,7 @@ MonoBehaviour:
   startHour: 22
   endHour: 8
   useCustomEndingTime: 0
-  endingSequenceTriggerTime: 540
+  endingSequenceTriggerTime: 900
   nextSceneName: MainMenu
   difficultyIncreasePerHour: 0.02
 --- !u!4 &2064945791

@@ -264,7 +264,7 @@ public class ZombieAI : NetworkBehaviour
         searchBehaviorAmount = Mathf.Clamp01(baseSearchBehaviorAmount - difficultyReduction);
         focusedSearchAmount = Mathf.Clamp01(baseFocusedSearchAmount - difficultyReduction);
 
-        if (IsNetworkSessionActive() && IsServer)
+        if (IsNetworkSessionActive() && IsServer && IsSpawned)
         {
             SearchBehaviorAmountNetwork.Value = searchBehaviorAmount;
             FocusedSearchAmountNetwork.Value = focusedSearchAmount;

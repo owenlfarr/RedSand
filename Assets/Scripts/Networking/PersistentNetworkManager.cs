@@ -68,15 +68,24 @@ namespace Networking
                 return;
             }
 
-            if (clientId == NetworkManager.ServerClientId)
+            // NGO reports the disconnected local client ID on a client, including
+            // when the host disappears. It does not report ServerClientId here.
+            if (clientId == networkManager.LocalClientId)
             {
                 networkManager.Shutdown();
-
-                if (SceneManager.GetActiveScene().name != "MainMenu")
-                {
-                    SceneManager.LoadScene("MainMenu");
-                }
+                StartCoroutine(ReturnToMenuAfterShutdown(networkManager));
             }
+        }
+
+        private System.Collections.IEnumerator ReturnToMenuAfterShutdown(NetworkManager manager)
+        {
+            var voice = GetComponent<VoiceChatManager>();
+            if (voice != null) _ = voice.LeaveCurrentChannelAsync();
+            while (manager != null && (manager.IsListening || manager.ShutdownInProgress))
+                yield return null;
+            Time.timeScale = 1f;
+            if (SceneManager.GetActiveScene().name != "MainMenu")
+                SceneManager.LoadScene("MainMenu");
         }
     }
 }

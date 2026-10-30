@@ -39,19 +39,25 @@ public class NetworkPlayerMovementState : NetworkBehaviour
         NetworkVariableWritePermission.Server);
 
     [ServerRpc(RequireOwnership = false)]
-    public void SetMovementEnabledServerRpc(ulong targetClientId, bool enabled)
+    public void SetMovementEnabledServerRpc(ulong targetClientId, bool enabled, ServerRpcParams rpcParams = default)
     {
         if (!IsServer)
         {
             return;
         }
 
-        if (!IsSpawned || OwnerClientId != targetClientId)
+        // World systems set MovementEnabled directly on the host. Clients may only
+        // request changes for their own living character, never escape a locker.
+        if (!IsSpawned || OwnerClientId != targetClientId ||
+            rpcParams.Receive.SenderClientId != OwnerClientId)
         {
             Debug.LogWarning($"[NetworkPlayerMovementState] Ignored movement toggle for client {targetClientId} on owner {OwnerClientId}.");
             return;
         }
 
+        if (TryGetComponent<NetworkOxygenState>(out var oxygen) && oxygen.IsDead.Value) return;
+        foreach (var locker in FindObjectsOfType<LockerInteractionNew>())
+            if (locker.IsClientHidden(OwnerClientId)) return;
         MovementEnabled.Value = enabled;
     }
 }

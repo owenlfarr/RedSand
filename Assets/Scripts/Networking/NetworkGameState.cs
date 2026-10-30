@@ -59,12 +59,14 @@ public class NetworkGameState : NetworkBehaviour
         }
     }
 
-    private void OnDestroy()
+    public override void OnDestroy()
     {
+        RegisterCallbacks(false);
         if (Instance == this)
         {
             Instance = null;
         }
+        base.OnDestroy();
     }
 
     public override void OnNetworkSpawn()
@@ -184,7 +186,9 @@ public class NetworkGameState : NetworkBehaviour
 
         foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
         {
-            if (client.PlayerObject != null)
+            if (client.PlayerObject != null && client.PlayerObject.IsSpawned &&
+                client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) &&
+                !oxygen.IsDead.Value)
             {
                 aliveCount++;
             }
@@ -203,6 +207,8 @@ public class NetworkGameState : NetworkBehaviour
 
         if (register)
         {
+            NetworkManager.Singleton.OnClientConnectedCallback -= HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= HandleClientDisconnected;
             NetworkManager.Singleton.OnClientConnectedCallback += HandleClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += HandleClientDisconnected;
         }

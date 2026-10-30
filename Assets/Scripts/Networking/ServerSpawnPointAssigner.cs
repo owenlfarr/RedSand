@@ -29,8 +29,11 @@ namespace Networking
 
         private void OnClientConnected(ulong clientId)
         {
-            if (!NetworkManager.Singleton.IsServer)
+            if (!NetworkManager.Singleton.IsServer ||
+                NetworkManager.Singleton.GetComponent<RelayPartyManager>() != null)
             {
+                // RelayPartyManager/progression owns scene-complete spawning.
+                // Legacy scene assigners must not race to reposition those players.
                 return;
             }
 

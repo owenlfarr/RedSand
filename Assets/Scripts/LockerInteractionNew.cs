@@ -93,11 +93,11 @@ public class LockerInteractionNew : NetworkBehaviour
     {
         RefreshLocalPlayerReference();
 
-        if (playerTransform == null)
+        if (playerTransform == null && !IsNetworkSessionActive())
         {
             Debug.LogError("<color=red>[Locker]</color> No player found with tag 'Player'!");
         }
-        else if (playerControllerScript == null)
+        else if (playerTransform != null && playerControllerScript == null)
         {
             Debug.LogError("<color=red>[Locker]</color> PlayerController not found!");
         }
@@ -157,6 +157,7 @@ public class LockerInteractionNew : NetworkBehaviour
 
     void Update()
     {
+        if (IsServer && IsSpawned) ReleaseInvalidOccupants();
         ApplyNetworkHiddenVisualState();
         RefreshLocalPlayerReference();
         CheckPlayerProximity();
@@ -430,10 +431,21 @@ public class LockerInteractionNew : NetworkBehaviour
 
     void EnterLockerServer(ulong clientId, int lockerIndex)
     {
-        if (lockerIndex < 0 || lockerIndex >= MaxNetworkedLockers)
+        RefreshManagedLockers();
+        if (lockerIndex < 0 || lockerIndex >= MaxNetworkedLockers || lockerIndex >= managedLockers.Count)
         {
             return;
         }
+
+        Transform player = GetPlayerTransformByClientId(clientId);
+        if (player == null || managedLockers[lockerIndex] == null ||
+            (player.TryGetComponent<NetworkOxygenState>(out var oxygen) && oxygen.IsDead.Value) ||
+            Vector3.Distance(player.position, managedLockers[lockerIndex].position) > interactionDistance)
+            return;
+
+        // Different locker objects have separate occupancy lists.
+        foreach (var locker in FindObjectsOfType<LockerInteractionNew>())
+            if (locker != this && locker.IsClientHidden(clientId)) return;
 
         ulong hiddenClientId = GetHiddenClientIdForLocker(lockerIndex);
         if (hiddenClientId != ulong.MaxValue && hiddenClientId != clientId)
@@ -681,17 +693,38 @@ public class LockerInteractionNew : NetworkBehaviour
 
     Transform GetPlayerTransformByClientId(ulong clientId)
     {
-        if (NetworkManager.Singleton == null || NetworkManager.Singleton.ConnectedClients == null)
+        var manager = NetworkManager.Singleton;
+        if (manager == null || manager.SpawnManager == null)
         {
             return null;
         }
-
-        if (!NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
+        // Use replicated spawned objects on both host and clients.
+        foreach (var player in manager.SpawnManager.SpawnedObjectsList)
         {
-            return null;
+            if (player != null && player.IsPlayerObject && player.OwnerClientId == clientId)
+                return player.transform;
         }
+        return null;
+    }
 
-        return client.PlayerObject.transform;
+    private void ReleaseInvalidOccupants()
+    {
+        bool changed = false;
+        for (int i = 0; i < MaxNetworkedLockers; i++)
+        {
+            ulong id = GetHiddenClientIdForLocker(i);
+            if (id == ulong.MaxValue) continue;
+            Transform player = GetPlayerTransformByClientId(id);
+            if (player != null && (!player.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value))
+                continue;
+            SetHiddenClientIdForLocker(i, ulong.MaxValue);
+            changed = true;
+        }
+        if (changed)
+        {
+            SyncLegacyHiddenClientId();
+            DoorOpenNetwork.Value = HiddenClientIdNetwork.Value == ulong.MaxValue;
+        }
     }
 
     void SetPlayerVisualHidden(Transform playerRoot, bool hidden)

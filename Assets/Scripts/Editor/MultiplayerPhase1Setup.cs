@@ -64,30 +64,8 @@ public static class MultiplayerPhase1Setup
         AssetDatabase.Refresh();
     }
 
-    [InitializeOnLoadMethod]
-    private static void EnsureSetupOnLoad()
-    {
-        EditorApplication.delayCall += () =>
-        {
-            if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
-            {
-                return;
-            }
-
-            if (!AssetDatabase.IsValidFolder("Assets/Scripts/Networking"))
-            {
-                return;
-            }
-
-            SetupAll();
-            var realPrefab = EnsureNetworkRealPlayerPrefab();
-            EnsureNight1MultiplayerTestScene(realPrefab);
-            EnsureMenuRelayFlow(realPrefab);
-            EnsureBuildSettingsForMainMenuFlow();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-        };
-    }
+    // Setup is explicit through Tools/Networking. Running it on every assembly
+    // reload silently rewrites authored scenes and recreates duplicate managers.
 
     private static void SetupAll()
     {

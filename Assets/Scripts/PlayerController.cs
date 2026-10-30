@@ -171,6 +171,19 @@ public class PlayerController : NetworkBehaviour
         string activeSceneName = SceneManager.GetActiveScene().name;
         bool isMenuScene = activeSceneName == "Menu" || activeSceneName == "MainMenu";
 
+        if (isLocal && IsSpawned && !isMenuScene)
+        {
+            // The level's fallback camera is for scene previews/loading only.
+            // Leaving its listener active doubles audio after the owner spawns.
+            foreach (Camera sceneCamera in FindObjectsOfType<Camera>())
+            {
+                if (sceneCamera == cam || !sceneCamera.CompareTag("MainCamera") ||
+                    sceneCamera.GetComponentInParent<PlayerController>() != null) continue;
+                sceneCamera.enabled = false;
+                if (sceneCamera.TryGetComponent<AudioListener>(out var listener)) listener.enabled = false;
+            }
+        }
+
         if (isLocal && !isMenuScene)
         {
             Cursor.lockState = CursorLockMode.Locked;

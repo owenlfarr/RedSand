@@ -38101,7 +38101,7 @@ MonoBehaviour:
   startHour: 22
   endHour: 8
   useCustomEndingTime: 0
-  endingSequenceTriggerTime: 540
+  endingSequenceTriggerTime: 900
   nextSceneName: WinScene
   difficultyIncreasePerHour: 0.02
   CurrentHourNetwork:

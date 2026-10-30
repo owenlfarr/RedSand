@@ -34,6 +34,9 @@ public class PlayerDeathSpectator : MonoBehaviour
     private int spectateIndex;
     private float previousAudioVolume = 1f;
     private bool previousAudioPause;
+    private bool mutedForDeath;
+    private float nextTargetSearchTime;
+    private bool readyToSpectate;
 
     private void Awake()
     {
@@ -56,6 +59,7 @@ public class PlayerDeathSpectator : MonoBehaviour
 
     private void OnDestroy()
     {
+        RestoreDeathAudio();
         if (subscribedToDeathState && oxygenState != null)
         {
             oxygenState.IsDead.OnValueChanged -= OnDeadStateChanged;
@@ -105,6 +109,11 @@ public class PlayerDeathSpectator : MonoBehaviour
         {
             SwitchSpectateTarget(1);
         }
+        else if (readyToSpectate && activeSpectateTarget == null && Time.unscaledTime >= nextTargetSearchTime)
+        {
+            nextTargetSearchTime = Time.unscaledTime + 0.5f;
+            SelectFirstSpectateTarget();
+        }
 
         ApplySpectatorPitch();
     }
@@ -148,25 +157,32 @@ public class PlayerDeathSpectator : MonoBehaviour
             ShowBlackOverlay(1f);
             previousAudioVolume = AudioListener.volume;
             previousAudioPause = AudioListener.pause;
+            mutedForDeath = true;
             AudioListener.volume = 0f;
             AudioListener.pause = true;
         }
 
         yield return new WaitForSecondsRealtime(spectatorActivationDelay);
 
+        readyToSpectate = true;
         SelectFirstSpectateTarget();
 
-        if (useBlackIntro)
-        {
-            AudioListener.pause = previousAudioPause;
-            AudioListener.volume = previousAudioVolume;
-        }
+        RestoreDeathAudio();
 
         if (useBlackIntro && activeSpectatorCamera != null)
         {
             yield return StartCoroutine(FadeBlackOverlay(0f));
             HideBlackOverlay();
         }
+    }
+
+    private void RestoreDeathAudio()
+    {
+        // Scene transfer may destroy this component while its delay is running.
+        if (!mutedForDeath) return;
+        AudioListener.pause = previousAudioPause;
+        AudioListener.volume = previousAudioVolume;
+        mutedForDeath = false;
     }
 
     private void CacheReferences()
@@ -427,21 +443,22 @@ public class PlayerDeathSpectator : MonoBehaviour
             return;
         }
 
-        foreach (var client in NetworkManager.Singleton.ConnectedClientsList)
+        foreach (var player in NetworkManager.Singleton.SpawnManager.SpawnedObjectsList)
         {
-            if (client.PlayerObject == null || client.PlayerObject == networkObject)
+            if (player == null || !player.IsPlayerObject || player == networkObject)
             {
                 continue;
             }
 
-            OxygenSystem targetOxygen = client.PlayerObject.GetComponent<OxygenSystem>();
-            if (targetOxygen != null && targetOxygen.IsDead())
+            NetworkOxygenState targetOxygen = player.GetComponent<NetworkOxygenState>();
+            if (targetOxygen != null && targetOxygen.IsDead.Value)
             {
                 continue;
             }
 
-            spectateTargets.Add(client.PlayerObject);
+            spectateTargets.Add(player);
         }
+        spectateTargets.Sort((a, b) => a.OwnerClientId.CompareTo(b.OwnerClientId));
     }
 
     private void ApplySpectateTarget()
@@ -491,6 +508,7 @@ public class PlayerDeathSpectator : MonoBehaviour
 
         activeSpectatorCamera.enabled = true;
         activeSpectatorListener.enabled = true;
+        if (!mutedForDeath) HideBlackOverlay();
         ApplySpectatorPose();
     }
 

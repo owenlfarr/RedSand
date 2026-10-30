@@ -23,6 +23,31 @@ public class NetworkOxygenState : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
+    public override void OnNetworkSpawn()
+    {
+        IsDead.OnValueChanged += OnDeathChanged;
+        if (IsServer)
+        {
+            var oxygen = GetComponent<OxygenSystem>();
+            Initialize(oxygen != null ? oxygen.maxOxygen : 100f);
+            NetworkGameState.Instance?.RefreshPlayerCounts();
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        IsDead.OnValueChanged -= OnDeathChanged;
+        if (IsServer) NetworkGameState.Instance?.RefreshPlayerCounts();
+    }
+
+    private void OnDeathChanged(bool previous, bool current)
+    {
+        if (!IsServer) return;
+        if (current && TryGetComponent<NetworkPlayerMovementState>(out var movement))
+            movement.MovementEnabled.Value = false;
+        NetworkGameState.Instance?.RefreshPlayerCounts();
+    }
+
     public void Initialize(float maxOxygen)
     {
         if (!IsServer)
@@ -32,8 +57,10 @@ public class NetworkOxygenState : NetworkBehaviour
 
         CurrentOxygen.Value = maxOxygen;
         IsInBunker.Value = false;
-        IsDead.Value = false;
-        UseBlackDeathIntro.Value = true;
+        bool eliminated = Networking.NetworkLevelProgression.Instance != null &&
+            Networking.NetworkLevelProgression.Instance.IsEliminated(OwnerClientId);
+        UseBlackDeathIntro.Value = !eliminated;
+        IsDead.Value = eliminated;
     }
 
     [ServerRpc(RequireOwnership = false)]
@@ -50,6 +77,7 @@ public class NetworkOxygenState : NetworkBehaviour
             return;
         }
 
-        IsInBunker.Value = value;
+        var oxygen = GetComponent<OxygenSystem>();
+        IsInBunker.Value = oxygen != null && oxygen.IsInsideBunkerZone();
     }
 }

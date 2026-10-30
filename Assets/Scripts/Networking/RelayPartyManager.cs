@@ -68,6 +68,7 @@ namespace Networking
 
         private string joinCodeInput = "";
         private bool isBusy;
+        private int partyRequestVersion;
         private bool matchStarted;
         private bool lobbyCreated;
         private Allocation pendingHostAllocation;
@@ -257,6 +258,7 @@ namespace Networking
         {
             if (isBusy) return;
             isBusy = true;
+            int requestVersion = ++partyRequestVersion;
             statusText = "Creating party...";
             ResetLobbyRosterState();
             RefreshLobbyCodeUI();
@@ -267,6 +269,7 @@ namespace Networking
                 {
                     return;
                 }
+                if (requestVersion != partyRequestVersion) return;
 
                 var nm = NetworkManager.Singleton;
                 if (!ValidateNetworkManager(nm, out var transport))
@@ -274,15 +277,13 @@ namespace Networking
                     return;
                 }
 
-                if (nm.IsListening)
-                {
-                    nm.Shutdown();
-                }
+                if (!await EnsureNetworkStoppedAsync(nm) || requestVersion != partyRequestVersion) return;
 
                 Allocation allocation;
                 try
                 {
                     allocation = await RelayService.Instance.CreateAllocationAsync(GetRelayConnectionLimit());
+                    if (requestVersion != partyRequestVersion) return;
                 }
                 catch (Exception ex)
                 {
@@ -293,6 +294,7 @@ namespace Networking
                 try
                 {
                     latestJoinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+                    if (requestVersion != partyRequestVersion) { latestJoinCode = string.Empty; return; }
                 }
                 catch (Exception ex)
                 {
@@ -343,7 +345,7 @@ namespace Networking
 
         public void StartMatch()
         {
-            if (isBusy)
+            if (isBusy || matchStarted)
             {
                 return;
             }
@@ -377,6 +379,7 @@ namespace Networking
         {
             if (isBusy) return;
             isBusy = true;
+            int requestVersion = ++partyRequestVersion;
             statusText = "Joining party...";
             ResetLobbyRosterState();
             RefreshLobbyCodeUI();
@@ -387,6 +390,7 @@ namespace Networking
                 {
                     return;
                 }
+                if (requestVersion != partyRequestVersion) return;
 
                 // Normalise the code exactly as the host stored it.
                 string normalizedCode = (joinCode ?? string.Empty).Trim().ToUpperInvariant();
@@ -404,16 +408,13 @@ namespace Networking
                 }
 
                 // Tear down any stale connection before starting a new client.
-                if (nm.IsListening)
-                {
-                    nm.Shutdown();
-                    await System.Threading.Tasks.Task.Delay(100);
-                }
+                if (!await EnsureNetworkStoppedAsync(nm) || requestVersion != partyRequestVersion) return;
 
                 JoinAllocation joinAllocation;
                 try
                 {
                     joinAllocation = await RelayService.Instance.JoinAllocationAsync(normalizedCode);
+                    if (requestVersion != partyRequestVersion) return;
                 }
                 catch (Exception ex)
                 {
@@ -482,6 +483,7 @@ namespace Networking
 
         public void LeaveLobbyFromUI()
         {
+            ++partyRequestVersion; // Invalidate any Relay/auth request still awaiting completion.
             var nm = NetworkManager.Singleton;
             if (nm != null)
             {
@@ -532,6 +534,8 @@ namespace Networking
                 BroadcastLobbyName(clientId, lobbyPlayerNames[clientId]);
                 BroadcastAllLobbyNamesToClient(clientId);
                 BroadcastAllLobbyNames();
+                if (SceneManager.GetActiveScene().name == menuSceneName && !matchStarted)
+                    SetLobbyUIState(true);
             }
 
             UpdateLobbyAstronautVisuals();
@@ -612,6 +616,20 @@ namespace Networking
             return true;
         }
 
+        private async Task<bool> EnsureNetworkStoppedAsync(NetworkManager manager)
+        {
+            if (!manager.IsListening && !manager.ShutdownInProgress) return true;
+            manager.Shutdown();
+            for (int i = 0; i < 200; i++)
+            {
+                if (manager == null) return false;
+                if (!manager.IsListening && !manager.ShutdownInProgress) return true;
+                await Task.Delay(50);
+            }
+            statusText = "Previous connection is still shutting down. Try again.";
+            return false;
+        }
+
         private bool ValidateNetworkManager(NetworkManager nm, out UnityTransport transport)
         {
             transport = null;
@@ -667,8 +685,12 @@ namespace Networking
                 nm.SceneManager.OnLoadEventCompleted += OnNetworkSceneLoadCompleted;
             }
 
-            nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
-            return true;
+            var loadStatus = nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
+            if (loadStatus == SceneEventProgressStatus.Started) return true;
+            nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
+            statusText = $"Could not start game: {loadStatus}";
+            RefreshLobbyCodeUI();
+            return false;
         }
 
         private bool RestoreGamePlayerPrefab(NetworkManager nm)
@@ -705,6 +727,10 @@ namespace Networking
                 return;
             }
 
+            foreach (ulong clientId in clientsTimedOut)
+                if (clientId != nm.LocalClientId && nm.ConnectedClients.ContainsKey(clientId))
+                    nm.DisconnectClient(clientId, "Loading the level timed out. Please rejoin a new lobby.");
+
             if (spawnPlayersAfterLoadCoroutine != null)
             {
                 StopCoroutine(spawnPlayersAfterLoadCoroutine);
@@ -724,7 +750,7 @@ namespace Networking
                 yield break;
             }
 
-            foreach (ulong clientId in nm.ConnectedClientsIds)
+            foreach (ulong clientId in new List<ulong>(nm.ConnectedClientsIds))
             {
                 if (!nm.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject != null)
                 {
@@ -746,6 +772,8 @@ namespace Networking
                 Debug.Log($"[RelayPartyManager] Spawned missing player object for client {clientId} after scene load.");
             }
 
+            yield return null;
+            NetworkGameState.Instance?.RefreshPlayerCounts();
             spawnPlayersAfterLoadCoroutine = null;
         }
 
@@ -777,13 +805,29 @@ namespace Networking
             {
                 matchStarted = false;
                 UnlockCursorForMenu();
+                // The persistent manager's Start does not run again after a return
+                // to the menu; its old UI references belonged to the unloaded scene.
+                AutoBindMenuUI();
+                EnsureUsernameInputExists();
+                EnsureLeaveLobbyButtonExists();
+                EnsureSettingsTabExists();
+                WireMenuUI();
+                WireUsernameInput();
+                WireSettingsUI();
+                AutoBindLobbyVisuals();
+                InitializeAstronautFloatSlots(true);
+                EnsureLoadingIndicatorExists();
+                SetLobbyUIState(false);
+                RefreshLobbyCodeUI();
+                UpdateLobbyAstronautVisuals();
             }
 
-            if (!string.Equals(scene.name, multiplayerSceneName, StringComparison.Ordinal))
+            if (FindObjectOfType<NightTimeManager>() == null)
             {
                 return;
             }
 
+            matchStarted = true;
             DisableNonNetworkPlayersInMultiplayerScene();
         }
 
@@ -882,14 +926,16 @@ namespace Networking
             var nm = NetworkManager.Singleton;
             int connectedPlayers = nm != null && nm.ConnectedClientsIds != null ? nm.ConnectedClientsIds.Count : 0;
             bool hasRoom = connectedPlayers < GetLobbyPlayerLimit();
+            bool matchInProgress = matchStarted || SceneManager.GetActiveScene().name != menuSceneName;
 
-            response.Approved = hasRoom;
+            response.Approved = hasRoom && !matchInProgress;
             response.CreatePlayerObject = false;
             response.PlayerPrefabHash = null;
             response.Position = null;
             response.Rotation = null;
             response.Pending = false;
-            response.Reason = hasRoom ? string.Empty : "Lobby is full. Create a new lobby.";
+            response.Reason = matchInProgress ? "This match has already started. Join a new lobby."
+                : hasRoom ? string.Empty : "Lobby is full. Create a new lobby.";
         }
 
         private void AutoBindMenuUI()
@@ -1494,8 +1540,8 @@ namespace Networking
         {
             bool showCreateAndJoin = !created;
             var nm = NetworkManager.Singleton;
-            bool showOnlyLeave = created && nm != null && nm.IsListening;
-            bool isHostLobby = false;
+            bool isHostLobby = created && nm != null && nm.IsListening && nm.IsHost;
+            bool showOnlyLeave = created && !isHostLobby;
 
             if (createLobbyButton != null)
             {
@@ -1524,7 +1570,7 @@ namespace Networking
 
             if (startGameButton != null)
             {
-                startGameButton.gameObject.SetActive(isHostLobby && !showOnlyLeave);
+                startGameButton.gameObject.SetActive(isHostLobby && !matchStarted);
             }
 
             if (backButton != null)
@@ -1994,6 +2040,7 @@ namespace Networking
 
         private void OnLobbyNameBroadcastMessage(ulong senderClientId, FastBufferReader reader)
         {
+            if (senderClientId != NetworkManager.ServerClientId) return;
             reader.ReadValueSafe(out ulong clientId);
             reader.ReadValueSafe(out FixedString64Bytes fixedName);
             string cleanName = SanitizePlayerName(fixedName.ToString());
@@ -2012,7 +2059,7 @@ namespace Networking
 
         private void BroadcastAllLobbyNamesToClient(ulong targetClientId)
         {
-            foreach (var pair in lobbyPlayerNames)
+            foreach (var pair in new Dictionary<ulong, string>(lobbyPlayerNames))
             {
                 BroadcastLobbyName(pair.Key, pair.Value, targetClientId);
             }
@@ -2020,7 +2067,9 @@ namespace Networking
 
         private void BroadcastAllLobbyNames()
         {
-            foreach (var pair in lobbyPlayerNames)
+            // Named messages addressed to the host can execute immediately and
+            // update lobbyPlayerNames while this broadcast is still running.
+            foreach (var pair in new Dictionary<ulong, string>(lobbyPlayerNames))
             {
                 BroadcastLobbyName(pair.Key, pair.Value);
             }

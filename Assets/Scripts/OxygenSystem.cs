@@ -69,10 +69,8 @@ public class OxygenSystem : NetworkBehaviour
             oxygenState = gameObject.AddComponent<NetworkOxygenState>();
         }
 
-        if (IsServer)
-        {
-            oxygenState.Initialize(maxOxygen);
-        }
+        // NetworkOxygenState initializes in OnNetworkSpawn, before the spawn is
+        // replicated. Reinitializing here could revive a player killed this frame.
 
         audioSource = GetComponent<AudioSource>();
         if (audioSource == null)
@@ -161,6 +159,9 @@ public class OxygenSystem : NetworkBehaviour
 
         if (IsServer)
         {
+            // Use the host's physics state for every player, not a client-supplied
+            // boolean that could remain stale after a teleport or lost request.
+            if (oxygenState != null) oxygenState.IsInBunker.Value = IsInsideBunkerZone();
             UpdateOxygen();
 
             if (oxygenState != null && oxygenState.CurrentOxygen.Value <= 0f)
@@ -175,6 +176,15 @@ public class OxygenSystem : NetworkBehaviour
             UpdateOxygenUI();
             CheckLowOxygenWarning();
         }
+    }
+
+    public bool IsInsideBunkerZone()
+    {
+        int count = Physics.OverlapSphereNonAlloc(transform.position, bunkerCheckRadius,
+            bunkerCheckResults, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < count; i++)
+            if (bunkerCheckResults[i].CompareTag(bunkerZoneTag)) return true;
+        return false;
     }
 
     void CheckBunkerZone()

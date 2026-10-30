@@ -16,17 +16,17 @@ public class NightTimeManager : NetworkBehaviour
     [Tooltip("Ending hour (24-hour format)")]
     public int endHour = 8;
 
-    [Header("Ending Sequence Trigger")]
-    [Tooltip("When enabled, the ending sequence fires after this many real-time seconds instead of waiting for the end hour")]
+    [Header("Level Completion")]
+    [Tooltip("When enabled, the level completes after this many real-time seconds instead of waiting for the end hour")]
     public bool useCustomEndingTime = false;
 
-    [Tooltip("Real-time seconds from the start of the night before the ending sequence triggers (only used when Use Custom Ending Time is enabled)")]
+    [Tooltip("Real-time seconds before level completion (only used when Use Custom Ending Time is enabled)")]
     [Min(0f)]
     public float endingSequenceTriggerTime = 540f;
 
     [Header("Scene Settings")]
     [Tooltip("Name of the scene to load when night ends")]
-    public string nextSceneName = "WinScene";
+    public string nextSceneName = "Night 2";
 
     [Header("Difficulty Progression")]
     [Tooltip("How much to reduce zombie wander amount each hour (0-1)")]
@@ -75,6 +75,7 @@ public class NightTimeManager : NetworkBehaviour
         if (Instance == null)
         {
             Instance = this;
+            InitializeLocalState();
         }
         else
         {
@@ -95,12 +96,23 @@ public class NightTimeManager : NetworkBehaviour
         SyncLocalStateFromNetwork();
     }
 
+    public override void OnNetworkDespawn()
+    {
+        if (Instance == this) Instance = null;
+    }
+
+    public override void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        base.OnDestroy();
+    }
+
     public override void OnNetworkSpawn()
     {
         if (IsServer)
         {
             InitializeNetworkState();
-            if (NetworkGameState.Instance != null)
+            if (NetworkGameState.Instance != null && NetworkGameState.Instance.IsSpawned)
             {
                 if (NetworkGameState.Instance.SessionSeedNetwork.Value == 0)
                 {
@@ -121,6 +133,12 @@ public class NightTimeManager : NetworkBehaviour
             UpdateLocalNightProgress();
             return;
         }
+
+        // Scene-loaded objects exist before NGO has finished spawning them.
+        // Don't read zero/default clock data or advance an unspawned scene clock.
+        if (!IsSpawned) return;
+        if (IsServer && Networking.NetworkLevelProgression.Instance != null &&
+            Networking.NetworkLevelProgression.Instance.IsTransferring) return;
 
         if (!IsServer)
         {
@@ -184,40 +202,33 @@ public class NightTimeManager : NetworkBehaviour
 
     void EndNight()
     {
+        if (IsNetworkSessionActive() && !IsServer) return;
+        if (IsNetworkSessionActive() && EndingTriggeredNetwork.Value) return;
+        endingTriggered = true;
+        if (IsNetworkSessionActive()) EndingTriggeredNetwork.Value = true;
+
+        // The final authored level can leave its destination empty.
+        if (string.IsNullOrWhiteSpace(nextSceneName))
+        {
+            Debug.Log("[Night Manager] Night complete; no next level configured.");
+            return;
+        }
+        if (!Application.CanStreamedLevelBeLoaded(nextSceneName))
+        {
+            Debug.LogError($"[Night Manager] Next level '{nextSceneName}' is missing from Build Settings.");
+            return;
+        }
         if (IsNetworkSessionActive())
         {
-            if (!IsServer)
-            {
-                return;
-            }
-
-            if (EndingTriggeredNetwork.Value)
-            {
-                return;
-            }
-
-            endingTriggered = true;
-            EndingTriggeredNetwork.Value = true;
-            if (NetworkGameState.Instance != null)
-            {
-                NetworkGameState.Instance.SetRestartInProgress(true);
-            }
-            EndNightClientRpc();
-            return;
+            var progression = NetworkManager.Singleton.GetComponent<Networking.NetworkLevelProgression>();
+            if (progression == null)
+                progression = NetworkManager.Singleton.gameObject.AddComponent<Networking.NetworkLevelProgression>();
+            progression.TransferToLevel(nextSceneName);
         }
-
-        // If a BunkerEndingSequence is present it owns the scene transition.
-        BunkerEndingSequence ending = FindObjectOfType<BunkerEndingSequence>();
-        if (ending != null)
+        else
         {
-            ending.TriggerEnding();
-            return;
-        }
-
-        // Fallback: direct scene load (legacy behaviour / WinScreen).
-        if (!string.IsNullOrEmpty(nextSceneName))
-        {
-            SceneManager.LoadScene(nextSceneName);
+            var player = FindObjectOfType<OxygenSystem>();
+            if (player != null && !player.IsDead()) SceneManager.LoadScene(nextSceneName);
         }
     }
 
@@ -228,23 +239,6 @@ public class NightTimeManager : NetworkBehaviour
         CurrentMinute = minute;
         NightProgress = progress;
         Debug.Log($"<color=yellow>[Night Manager]</color> Hour advanced to {hour}:{minute:00} on client.");
-    }
-
-    [ClientRpc]
-    private void EndNightClientRpc()
-    {
-        endingTriggered = true;
-
-        if (NetworkGameState.Instance != null)
-        {
-            NetworkGameState.Instance.SetRestartInProgress(true);
-        }
-
-        BunkerEndingSequence ending = FindObjectOfType<BunkerEndingSequence>();
-        if (ending != null)
-        {
-            ending.TriggerEnding();
-        }
     }
 
     int CalculateTotalHours()
@@ -309,6 +303,7 @@ public class NightTimeManager : NetworkBehaviour
 
     private void UpdateLocalNightProgress()
     {
+        if (endingTriggered) return;
         hourTimer += Time.deltaTime;
         totalElapsedTime += Time.deltaTime;
 
@@ -331,6 +326,7 @@ public class NightTimeManager : NetworkBehaviour
 
     private void UpdateNetworkNightProgress()
     {
+        if (endingTriggered) return;
         hourTimer += Time.deltaTime;
         totalElapsedTime += Time.deltaTime;
 
@@ -390,7 +386,7 @@ public class NightTimeManager : NetworkBehaviour
 
     private void SyncLocalStateFromNetwork()
     {
-        if (!IsNetworkSessionActive())
+        if (!IsNetworkSessionActive() || !IsSpawned)
         {
             return;
         }

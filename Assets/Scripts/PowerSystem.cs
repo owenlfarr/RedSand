@@ -486,7 +486,8 @@ public class PowerSystem : NetworkBehaviour
         }
 
         float distance = Vector3.Distance(client.PlayerObject.transform.position, powerBoxTransform.position);
-        return distance <= interactionDistance;
+        return distance <= interactionDistance &&
+            (!client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value);
     }
 
     void OnDrawGizmosSelected()

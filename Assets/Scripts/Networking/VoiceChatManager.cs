@@ -30,6 +30,7 @@ namespace Networking
         private bool wantsRadioBroadcast;
         private bool radioBroadcasting;
         private Channel3DProperties currentChannel3DProperties;
+        private readonly System.Threading.SemaphoreSlim channelGate = new System.Threading.SemaphoreSlim(1, 1);
 
         public string CurrentChannel => currentChannel;
         public bool VivoxAvailable => vivoxAvailable;
@@ -133,6 +134,13 @@ namespace Networking
         /// </summary>
         public async Task JoinLobbyVoiceAsync(string channelName)
         {
+            await channelGate.WaitAsync();
+            try { await JoinLobbyVoiceCoreAsync(channelName); }
+            finally { channelGate.Release(); }
+        }
+
+        private async Task JoinLobbyVoiceCoreAsync(string channelName)
+        {
             if (string.IsNullOrWhiteSpace(channelName))
             {
                 return;
@@ -158,21 +166,7 @@ namespace Networking
                 // Leave existing channel first.
                 if (!string.IsNullOrEmpty(currentChannel))
                 {
-                    try
-                    {
-                        await VivoxService.Instance.LeaveChannelAsync(currentChannel);
-                        if (!string.IsNullOrEmpty(currentRadioChannel))
-                        {
-                            await VivoxService.Instance.LeaveChannelAsync(currentRadioChannel);
-                        }
-                    }
-                    catch (Exception leaveEx)
-                    {
-                        Debug.LogWarning($"[VoiceChat] Leave previous channel failed (continuing): {leaveEx.Message}");
-                    }
-
-                    currentChannel = string.Empty;
-                    currentRadioChannel = string.Empty;
+                    await LeaveCurrentChannelCoreAsync();
                 }
 
                 ChatCapability capability = autoJoinAudioOnly ? ChatCapability.AudioOnly : ChatCapability.TextAndAudio;
@@ -186,6 +180,9 @@ namespace Networking
                         AudioFadeModel.InverseByDistance);
 
                     await VivoxService.Instance.JoinPositionalChannelAsync(normalized, capability, currentChannel3DProperties);
+                    // Track the successfully joined channel immediately, even if the
+                    // subsequent radio/transmission setup fails and needs cleanup.
+                    currentChannel = normalized;
                     try
                     {
                         currentRadioChannel = $"{normalized}_RADIO";
@@ -222,6 +219,13 @@ namespace Networking
         /// <summary>Leaves the current voice channel. Non-fatal if already empty.</summary>
         public async Task LeaveCurrentChannelAsync()
         {
+            await channelGate.WaitAsync();
+            try { await LeaveCurrentChannelCoreAsync(); }
+            finally { channelGate.Release(); }
+        }
+
+        private async Task LeaveCurrentChannelCoreAsync()
+        {
             if (string.IsNullOrEmpty(currentChannel))
             {
                 return;
@@ -234,23 +238,29 @@ namespace Networking
             wantsRadioBroadcast = false;
             radioBroadcasting = false;
 
-            try
-            {
-                await VivoxService.Instance.LeaveChannelAsync(channelToLeave);
-                if (!string.IsNullOrEmpty(radioChannelToLeave))
-                {
-                    await VivoxService.Instance.LeaveChannelAsync(radioChannelToLeave);
-                }
-                Debug.Log($"[VoiceChat] Left channel: {channelToLeave}");
-            }
+            await TryLeaveChannelAsync(channelToLeave);
+            await TryLeaveChannelAsync(radioChannelToLeave);
+        }
+
+        private async Task TryLeaveChannelAsync(string channel)
+        {
+            if (string.IsNullOrEmpty(channel)) return;
+            try { await VivoxService.Instance.LeaveChannelAsync(channel); }
             catch (Exception ex)
             {
                 lastVivoxError = ex.Message;
-                Debug.LogWarning($"[VoiceChat] Leave failed: {ex.Message}");
+                Debug.LogWarning($"[VoiceChat] Leave failed for {channel}: {ex.Message}");
             }
         }
 
         public async void BeginRadioBroadcast()
+        {
+            await channelGate.WaitAsync();
+            try { await BeginRadioBroadcastCoreAsync(); }
+            finally { channelGate.Release(); }
+        }
+
+        private async Task BeginRadioBroadcastCoreAsync()
         {
             if (!useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentRadioChannel) || radioBroadcasting)
             {
@@ -280,6 +290,13 @@ namespace Networking
         }
 
         public async void EndRadioBroadcast()
+        {
+            await channelGate.WaitAsync();
+            try { await EndRadioBroadcastCoreAsync(); }
+            finally { channelGate.Release(); }
+        }
+
+        private async Task EndRadioBroadcastCoreAsync()
         {
             wantsRadioBroadcast = false;
 

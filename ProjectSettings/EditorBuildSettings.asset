@@ -17,5 +17,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/MultiplayerTest.unity
     guid: 30faf346b3ee273438d4b4db1c8368fb
+  - enabled: 1
+    path: Assets/Scenes/Night 2.unity
+    guid: 9ce98112afad47a0843a2ae04a8157d1
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

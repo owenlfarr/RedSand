@@ -186,7 +186,7 @@ public class SolarFlareSystem : NetworkBehaviour
         {
             Debug.LogError("<color=red>[Solar Flare]</color> Player not found!");
         }
-        else
+        else if (playerTransform != null)
         {
             playerController = playerTransform.GetComponent<PlayerController>();
         }
@@ -845,6 +845,17 @@ public class SolarFlareSystem : NetworkBehaviour
             return;
         }
 
+        // Validate continuously: the client may die/disconnect or move away
+        // without sending the matching release RPC.
+        if (IsRepairingNetwork.Value && !IsPlayerNearFixPoint(activeRepairClientId))
+        {
+            activeRepairClientId = INVALID_CLIENT_ID;
+            isRepairing = false;
+            IsRepairingNetwork.Value = false;
+            RepairProgressNetwork.Value = 0f;
+            repairProgress = 0f;
+        }
+
         if (IsRepairingNetwork.Value)
         {
             repairProgress = RepairProgressNetwork.Value + Time.deltaTime;
@@ -1007,7 +1018,8 @@ public class SolarFlareSystem : NetworkBehaviour
         }
 
         float distance = Vector3.Distance(client.PlayerObject.transform.position, fixPointTransform.position);
-        return distance <= interactionDistance;
+        return distance <= interactionDistance &&
+            (!client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value);
     }
 
     private void RefreshLocalPlayerReferences()

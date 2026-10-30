@@ -68,7 +68,7 @@ public class DefenseSystem : NetworkBehaviour
     {
         RefreshLocalPlayerReference();
 
-        if (playerTransform == null)
+        if (playerTransform == null && !IsNetworkSessionActive())
         {
             Debug.LogError("DefenseSystem: Player with tag 'Player' not found!");
         }
@@ -315,7 +315,8 @@ public class DefenseSystem : NetworkBehaviour
         }
 
         float distance = Vector3.Distance(client.PlayerObject.transform.position, GetDefenseCenter());
-        return distance <= interactionDistance;
+        return distance <= interactionDistance &&
+            (!client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value);
     }
 
     void ActivateDefenseServer(ulong clientId)

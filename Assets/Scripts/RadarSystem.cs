@@ -52,11 +52,11 @@ public class RadarSystem : NetworkBehaviour
     {
         RefreshLocalPlayerReference();
 
-        if (playerTransform == null)
+        if (playerTransform == null && !IsNetworkSessionActive())
         {
             Debug.LogError("<color=red>[Radar]</color> Player with tag 'Player' not found!");
         }
-        else
+        else if (playerTransform != null)
         {
             Debug.Log($"<color=green>[Radar]</color> Player found at {playerTransform.position}");
         }
@@ -251,6 +251,7 @@ public class RadarSystem : NetworkBehaviour
 
     void TryActivateRadarForClient(ulong clientId)
     {
+        if (IsRadarLockedOut()) return;
         if (!CanClientScan(clientId))
         {
             RadarResultsClientRpc("Radar scan failed.");
@@ -286,7 +287,8 @@ public class RadarSystem : NetworkBehaviour
         }
 
         float distance = Vector3.Distance(client.PlayerObject.transform.position, GetRadarCenter());
-        return distance <= interactionDistance;
+        return distance <= interactionDistance &&
+            (!client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value);
     }
 
     void PerformRadarScanOffline()
