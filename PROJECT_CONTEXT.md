@@ -1,5 +1,22 @@
 # RedSand project context
 
+## HUD, local settings and visibility (2026-10-31)
+
+- Both night scenes use compact amber suit/clock/compass visuals. SuitOxygenHudVisibility fades the suit panel out only when the existing oxygen fill reaches full.
+- ScreenUiLayout fits scene and runtime screen-space canvases within the display, preserving world-space UI and existing reference sizes. Canvas component references were corrected and bidirectionally validated.
+- PlayerSettingsUI extends the existing menu settings with saved resolution/window mode, 15-second display confirmation/revert, VSync, FPS cap, FPS counter and game volume. PlayerController now loads the existing saved mouse sensitivity.
+- Player camera near clipping reduced from 0.3 to 0.03 to prevent sprint wall-edge clipping.
+- Built-in rendering is active (GraphicsSettings and quality pipeline overrides are null). OpaqueDistanceFog uses a Resources shader on player/spectator cameras: radial fade starts at 18m and saturates completely at 40m, including the sky. AI/network gameplay is unchanged.
+- Validation: gameplay C# compiled against cached Unity references; scene component links and network identity uniqueness passed. No new build, shader rendering verification or multiplayer playtest was performed.
+
+## Night 2 second motion monster (2026-10-31)
+
+- User-added `Movement Detected 2` in Night 2 already has Enemy tagging, ZombieAI, CharacterController, a separate NetworkObject, bunker target, and a child animated model. Its existing serialized configuration was preserved.
+- Removed ZombieAI's singleton destruction rule, which otherwise destroys the second monster. Each instance now runs its own host-authoritative AI, movement replication, kills, defense neutralization, and respawn state. Multiplayer monsters wait for network spawn before simulating or attacking; destination writes require spawn.
+- Radar already enumerates tagged monsters and displays their individual scene names and neutralized states. Defense now skips neutralized/disabled/unspawned enemies and sends the same named neutralization results to host and clients.
+- Validation: gameplay C# compiled with Unity's cached references. Night 1's 14 and Night 2's 15 serialized NetworkObject identities matched canonical XXHash32 IDs with no duplicates; both Night 2 AI bunker references resolve. No live host/client gameplay or animation test was performed.
+- Night 2 difficulty tuning: Rush chance 25% per 45-second check; outage chance 20% per 60-second check. Night 1 remains 20% and 16%, respectively.
+
 ## Two-player transfer failure and fix (2026-10-30)
 
 - Live client Player.log confirmed 13 in-scene NetworkObject soft-sync hash failures followed by a NullReferenceException in SceneEventData.DeserializeScenePlacedObjects. This prevented the scene-load completion handshake and destination player spawning; the client clock remained at its default and neither side had a working player camera.

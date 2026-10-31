@@ -1349,6 +1349,7 @@ namespace Networking
             sensitivitySlider.handleRect = handleImage.rectTransform;
 
             settingsBackButton = CreateMenuButton(settingsPanel.transform, "SettingsBackButton", "Back", new Vector2(0.5f, 0.5f), new Vector2(220f, 46f), new Vector2(0f, -105f), TextAlignmentOptions.Center);
+            PlayerSettingsUI.Extend(settingsPanel);
             settingsPanel.SetActive(false);
         }
 

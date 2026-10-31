@@ -194,15 +194,9 @@ public class ZombieAI : NetworkBehaviour
 
     void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-            return;
-        }
+        // Each scene monster owns its AI and replicated state independently.
+        controller = GetComponent<CharacterController>();
+        cachedRenderers = GetComponentsInChildren<Renderer>(true);
 
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.spatialBlend = 0f;
@@ -213,8 +207,6 @@ public class ZombieAI : NetworkBehaviour
         movementAudioSource.playOnAwake = false;
         movementAudioSource.loop = true;
     }
-
-    public static ZombieAI Instance { get; private set; }
 
     void Start()
     {
@@ -232,7 +224,10 @@ public class ZombieAI : NetworkBehaviour
         baseSearchBehaviorAmount = searchBehaviorAmount;
         baseFocusedSearchAmount = focusedSearchAmount;
 
-        SetNewRoamDestination();
+        if (!IsNetworkSessionActive() || IsServer)
+        {
+            SetNewRoamDestination();
+        }
         currentMoveDirection = transform.forward;
         wanderAngle = Random.Range(0f, 360f);
 
@@ -341,7 +336,12 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
-        // Fallback path for offline play or scene objects that are not network-spawned yet.
+        // Wait for scene synchronization before moving or attacking in multiplayer.
+        if (networkActive)
+        {
+            return;
+        }
+
         UpdateOfflineAI();
         UpdateDistanceVisibility();
     }
@@ -679,7 +679,7 @@ public class ZombieAI : NetworkBehaviour
             currentDestination = spawnPoint + new Vector3(randomCircle.x, 0, randomCircle.y);
         }
 
-        if (IsNetworkSessionActive() && IsServer)
+        if (IsNetworkSessionActive() && IsServer && IsSpawned)
         {
             CurrentDestinationNetwork.Value = currentDestination;
         }
@@ -858,7 +858,7 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
-        if (IsNetworkSessionActive() && !IsServer)
+        if (IsNetworkSessionActive() && (!IsSpawned || !IsServer || IsNeutralizedNetwork.Value))
         {
             return;
         }

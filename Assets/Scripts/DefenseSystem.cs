@@ -361,6 +361,7 @@ public class DefenseSystem : NetworkBehaviour
         if (monsters.Length == 0)
         {
             DisplayDefenseResults("No threats detected.", isNetworkSession);
+            if (isNetworkSession) DefenseResultsClientRpc("No threats detected.");
             return;
         }
 
@@ -374,6 +375,16 @@ public class DefenseSystem : NetworkBehaviour
                 continue;
             }
 
+            ZombieAI ai = monster.GetComponent<ZombieAI>();
+            if (ai == null || !ai.enabled || ai.IsNeutralized() || currentlyDisabledZombies.Contains(monster))
+            {
+                continue;
+            }
+            if (isNetworkSession && (!ai.IsSpawned || !ai.IsServer))
+            {
+                continue;
+            }
+
             float distance = Vector3.Distance(monster.transform.position, objectiveTransform.position);
             if (distance <= threatRadius)
             {
@@ -382,9 +393,10 @@ public class DefenseSystem : NetworkBehaviour
             }
         }
 
+        string result;
         if (affectedCount == 0)
         {
-            DisplayDefenseResults("DEFENSE ACTIVATED\n\nNo threats within range.\nObjective is secure.", isNetworkSession);
+            result = "DEFENSE ACTIVATED\n\nNo threats within range.\nObjective is secure.";
         }
         else
         {
@@ -406,8 +418,16 @@ public class DefenseSystem : NetworkBehaviour
                 }
             }
 
-            DisplayDefenseResults($"<b>DEFENSE ACTIVATED</b>\n\n{affectedCount} threat(s) neutralized!\nRelocating enemies...", isNetworkSession);
+            List<string> neutralizedNames = new List<string>();
+            foreach (GameObject zombie in threateningZombies)
+            {
+                if (zombie != null) neutralizedNames.Add($"- {zombie.name}");
+            }
+            result = $"<b>DEFENSE ACTIVATED</b>\n\n{affectedCount} threat(s) neutralized!\n" +
+                string.Join("\n", neutralizedNames) + "\nRelocating enemies...";
         }
+
+        DisplayDefenseResults(result, isNetworkSession);
 
         if (audioSource != null && activationSound != null)
         {
@@ -416,7 +436,7 @@ public class DefenseSystem : NetworkBehaviour
 
         if (isNetworkSession)
         {
-            DefenseResultsClientRpc($"<b>DEFENSE ACTIVATED</b>\n\n{affectedCount} threat(s) neutralized!");
+            DefenseResultsClientRpc(result);
         }
     }
 

@@ -59,6 +59,7 @@ public class PlayerController : NetworkBehaviour
         controller = GetComponent<CharacterController>();
         movementState = GetComponent<NetworkPlayerMovementState>();
         oxygenSystem = GetComponent<OxygenSystem>();
+        mouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat("MouseSensitivity", mouseSensitivity), 0.25f, 8f);
         sprintEnergy = maxSprintDuration;
         canSprint = true;
         wasGrounded = true;
@@ -79,9 +80,20 @@ public class PlayerController : NetworkBehaviour
             if (cam != null)
             {
                 cam.fieldOfView = normalFOV;
+                // Keep the near-plane corners inside the player's wall clearance,
+                // including the forward camera offset, sprint bob and wider FOV.
+                cam.nearClipPlane = Mathf.Min(cam.nearClipPlane, 0.03f);
             }
             cameraStartPos = playerCamera.localPosition;
             Debug.Log($"Camera start position captured: {cameraStartPos}");
+        }
+
+        // Cover the normal view and the separate spectator view on every player.
+        // The effect is local rendering only; AI and replicated state are untouched.
+        foreach (Camera playerView in GetComponentsInChildren<Camera>(true))
+        {
+            if (playerView.targetTexture == null && playerView.GetComponent<OpaqueDistanceFog>() == null)
+                playerView.gameObject.AddComponent<OpaqueDistanceFog>();
         }
 
         ApplyLocalOwnershipPresentation();
