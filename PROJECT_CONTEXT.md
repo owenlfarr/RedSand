@@ -6,7 +6,7 @@
 - ScreenUiLayout fits scene and runtime screen-space canvases within the display, preserving world-space UI and existing reference sizes. Canvas component references were corrected and bidirectionally validated.
 - PlayerSettingsUI extends the existing menu settings with saved resolution/window mode, 15-second display confirmation/revert, VSync, FPS cap, FPS counter and game volume. PlayerController now loads the existing saved mouse sensitivity.
 - Player camera near clipping reduced from 0.3 to 0.03 to prevent sprint wall-edge clipping.
-- Built-in rendering is active (GraphicsSettings and quality pipeline overrides are null). OpaqueDistanceFog uses a Resources shader on player/spectator cameras: radial fade starts at 18m and saturates completely at 40m, including the sky. AI/network gameplay is unchanged.
+- Built-in rendering is active (GraphicsSettings and quality pipeline overrides are null). OpaqueDistanceFog uses a Resources shader on player/spectator cameras. Revised after feedback about the visible gray haze: pure black radial fade starts at 35m and saturates completely at 70m, including the sky so distant monsters/mountains cannot silhouette against it. AI/network gameplay is unchanged.
 - Validation: gameplay C# compiled against cached Unity references; scene component links and network identity uniqueness passed. No new build, shader rendering verification or multiplayer playtest was performed.
 
 ## Night 2 second motion monster (2026-10-31)
@@ -141,3 +141,41 @@ These findings were not changed during this review:
 Start through MainMenu with a host and two clients. Check roster and names, rejected fourth player, scene transition/spawn uniqueness, local camera/UI bindings, surface/bunker oxygen and flashlight replication, simultaneous console use and shared cooldowns, flare repair and compass, Rush hiding with occupied slots, zombie retargeting after death, ragdoll/spectator timing, all-dead recovery, radio/proximity transitions, ending, host departure, and join attempts after the match begins.
 
 No new compile, build, visual inspection, or live multi-client verification was performed for this source/scene review.
+
+## Bunker tablet (2026-11-01)
+- PlayerController adds BunkerTablet to every player at runtime. Owner-only square first-person UI slides with 1; left click shows a rotating bunker bearing for 3 seconds then a 25-second per-player cooldown. Stowing does not reset timers. Input requires locked cursor and an alive, movement-enabled player.
+- Target resolves Bunker Arrow Waypoint (spaces/underscores ignored), with BunkerZone fallback. Public target field supports manual assignment.
+- OxygenSystem suppresses the replicated flashlight while equipped, retaining requested state across teleports and restoring on stow. Death/control loss hides the view.
+- Gameplay C# compiled with cached Unity references; visual and multiplayer Play Mode verification remains outstanding.
+
+## Night 2 power station watcher (2026-11-01)
+
+- Saved the user's unsaved Night 2 placement before setup. The existing `ManThing (1)` is now the visual child of `Power Station Watcher`; its world pose, materials, and scale were preserved. The older inactive ending ManThing was not repurposed. Night 1 has no watcher component or instance.
+- Host-authoritative `PowerStationWatcher` patrols a configurable rectangle centered on Powerbox (default half extents 55 x 35m, speed 1.6m/s), with 28m, 100-degree vision and solid-geometry occlusion. Dead and bunker players are excluded. The collider and eye height were fitted to the user's approximately 11.3m-tall placed model; motor minimum movement distance is zero to avoid high-frame-rate movement loss.
+- One surface player at a time receives a quiet generated signal cue and increasing local screen static. After a 1.5s reaction grace, moving, looking, jumping, sprinting or using tools fails the encounter and kills only that victim through NetworkOxygenState and the existing spectator flow. The host chooses a random 5-10s stillness period after grace. Controls remain responsive, making stillness a challenge rather than an automatic freeze.
+- Success, failure or target invalidation hides the monster and disables its collision for 45s, then it returns on patrol ground. The scene NetworkObject remains registered during this dormant period. Static fades over 2s. Clients snap to the new replicated position on reappearance. Owner/encounter/time-validated activity reports run at 10Hz; server pose/pitch checks and a 2.5s heartbeat timeout supplement them.
+- Reusable prefab: Assets/Prefabs/PowerStationWatcher.prefab. Later nights can instantiate it and assign their power station. Setup/validation and isolated test build commands are under Tools > Watcher; notes are in Assets/_Project/WatcherNotes.md. Test scene is excluded from normal Build Settings.
+- Validation: Unity development build succeeded with zero errors. Two standalone processes using real NGO/Unity Transport over localhost passed 67 automated assertions: host/client acquisition and stillness survival, victim-only static with increasing exposure and 2s fade, real 45s absence, repeated respawns, position/look/tool/jump/sprint violations, unaffected bystanders, stale/wrong-owner report rejection, bunker exclusion, wall occlusion, initial roaming and roaming after respawn within bounds. First run exposed discarded tiny movement steps; fixed and full suite rerun passed. All enabled scene NetworkObject identities and Night 2-only wiring passed editor validation.
+- Evidence: Logs/WatcherNetworkTestResult.txt; Logs/WatcherHost2.log; Logs/WatcherClient2.log; Logs/WatcherTestBuildResult.txt. Tests use the real monster prefab with minimal actors containing actual gameplay movement/death/network transform components. They are headless local tests, not a full Relay/MainMenu session or a visual/audio playtest in Night 2. Unsupported shader messages in those process logs result from the explicit -nographics test mode.
+
+### Direct Night 2 Play fix (2026-11-01)
+- Fixed the reported stationary monster when pressing Play directly in Night 2: the original Update returned until IsSpawned, but direct scene Play does not start a network session.
+- With no listening NetworkManager, the watcher now runs a separate local patrol/encounter state, with the same vision, input sampling, grace/hold rules, victim effect, death, cooldown and respawn behavior. This local state does not write NetworkVariables or send RPCs. Network sessions still wait for scene spawn and only the host simulates AI. Network spawn resets local preview state and assigns motor authority; disconnect/despawn cannot restart offline AI.
+- Verified in the actual Night 2 scene using editor Play Mode without starting a host/client: moved 7.539 metres over 5 seconds with the CharacterController enabled and IsSpawned false. Test returned Unity to Edit Mode. Evidence: Logs/WatcherDirectPlayResult.txt. The test can be rerun explicitly under Tools > Watcher > Test Direct Night 2 Play.
+
+- Temporary transition test (2026-11-01): Night1_MultiplayerTest's NightTimeManager now uses custom completion after 5 seconds, targeting Night 2. Restore normal night length by disabling Use Custom Ending Time on that scene's clock. Night 2 timing is unchanged.
+
+- Watcher tuning (2026-11-01): increased roam speed from 1.6 to 3.5 m/s, sight range from 28 to 45m, and FOV from 100 to 180 degrees in both the Night 2 scene and reusable prefab, plus script defaults. Replaced the 192x108 point-filtered CPU static with a Resources UI shader using approximately 1.5-screen-pixel grain at 24Hz. GPU noise avoids larger per-frame texture uploads; unsupported shader devices use 640x360 bilinear noise. Grace, hold, cooldown, victim-only effects and wall occlusion are unchanged.
+
+### Movement Detected visibility correction (2026-11-01)
+- The two Night 2 ZombieAI monsters were disabling their renderers whenever the local player was farther than maxVisibleDistance=45m. This also made them vanish in Scene view when starting Play, regardless of the Scene view camera's distance.
+- Disabled that additional renderer cutoff (default and explicit scene fields now 0). Existing camera black fog still controls distant visibility; defense neutralization still hides its target temporarily. No AI, attack, spawn or network identity changes were made.
+- Verified scene wiring: Night1_MultiplayerTest and legacy Night 1 each contain one ZombieAI/Movement Detected; Night 2 contains two (Movement Detected plus Movement Detected 2). The second monster was already absent from Night 1; no removal was needed. Gameplay C# compilation passed.
+
+
+## Restore point before lobby browser (2026-11-01)
+- Saved current source, scenes, prefabs, packages and project settings, including uncommitted work, to local Git branch `backup/pre-lobby-browser-20261101-111858`.
+- Independent byte-for-byte archive, SHA-256 manifest and architecture notes: `C:\Users\rhode\Documents\RedSand-RestorePoints\pre-lobby-browser-20261101-111858`.
+- Baseline: Relay/NGO existing create-host, join-by-code, three-player cap, owner names, match-start join rejection, Vivox proximity/radio, and host scene transfer remain in place. No public lobby discovery/browser has been implemented.
+- Main path: MainMenu -> Night1_MultiplayerTest -> Night 2. The temporary five-second Night 1 transition is enabled.
+- Night 1 has one Movement Detected; Night 2 has two plus the power station watcher. Watcher roaming is 3.5m/s with 45m/180-degree vision, direct scene Play support, fine-grain static, 1.5s grace, 5-10s stillness, 2s fade and 45s absence. Extra ZombieAI renderer-distance cutoff is disabled; black fog remains. Tablet and first-person head hiding are included.

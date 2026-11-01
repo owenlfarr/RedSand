@@ -6,9 +6,8 @@ using UnityEngine.SceneManagement;
 [DisallowMultipleComponent]
 public sealed class OpaqueDistanceFog : MonoBehaviour
 {
-    [SerializeField, Min(0f)] private float fogStart = 18f;
-    [SerializeField, Min(1f)] private float fogEnd = 40f;
-    [SerializeField] private Color fogColor = new Color(0.025f, 0.03f, 0.035f, 1f);
+    [SerializeField, Min(0f)] private float fogStart = 35f;
+    [SerializeField, Min(1f)] private float fogEnd = 70f;
     private Material material;
     private Camera view;
 
@@ -33,7 +32,8 @@ public sealed class OpaqueDistanceFog : MonoBehaviour
         }
         material.SetFloat("_FogStart", fogStart);
         material.SetFloat("_FogEnd", Mathf.Max(fogStart + 1f, fogEnd));
-        material.SetColor("_FogColor", fogColor);
+        // Pure black must remain the same for geometry and sky, with no gray haze.
+        material.SetColor("_FogColor", Color.black);
         Graphics.Blit(source, destination, material);
     }
 

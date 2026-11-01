@@ -52,6 +52,8 @@ public class OxygenSystem : NetworkBehaviour
     private float rechargeRate;
     private Collider[] bunkerCheckResults = new Collider[10];
     private Light playerFlashlight;
+    private bool tabletFlashlightSuppressed;
+    private bool requestedFlashlightState;
     private PlayerDeathSpectator deathSpectator;
     private bool useBlackDeathIntro = true;
 
@@ -507,6 +509,8 @@ public class OxygenSystem : NetworkBehaviour
 
     public void SetFlashlightEnabled(bool enabledState)
     {
+        requestedFlashlightState = enabledState;
+        enabledState = enabledState && !tabletFlashlightSuppressed;
         ApplyFlashlightState(enabledState);
 
         if (!IsNetworkSessionActive())
@@ -520,8 +524,22 @@ public class OxygenSystem : NetworkBehaviour
         }
         else
         {
-            SetFlashlightEnabledServerRpc(enabledState);
+            SetFlashlightEnabledServerRpc(requestedFlashlightState, tabletFlashlightSuppressed);
         }
+    }
+
+    public void SetTabletFlashlightSuppressed(bool suppressed)
+    {
+        if (tabletFlashlightSuppressed == suppressed) return;
+        if (suppressed)
+        {
+            EnsureFlashlightReference();
+            requestedFlashlightState = IsNetworkSessionActive() && IsSpawned
+                ? IsFlashlightEnabledNetwork.Value : playerFlashlight != null && playerFlashlight.enabled;
+        }
+        bool desired = requestedFlashlightState;
+        tabletFlashlightSuppressed = suppressed;
+        SetFlashlightEnabled(desired);
     }
 
     private void EnsureLocalUIReferences()
@@ -623,7 +641,7 @@ public class OxygenSystem : NetworkBehaviour
     }
 
     [ServerRpc(RequireOwnership = false)]
-    private void SetFlashlightEnabledServerRpc(bool enabledState, ServerRpcParams serverRpcParams = default)
+    private void SetFlashlightEnabledServerRpc(bool requestedState, bool tabletSuppressed, ServerRpcParams serverRpcParams = default)
     {
         if (!IsServer)
         {
@@ -635,7 +653,13 @@ public class OxygenSystem : NetworkBehaviour
             return;
         }
 
+        // Keep suppression on the server too, so server-side teleports cannot
+        // switch this player's light back on while their tablet is held.
+        requestedFlashlightState = requestedState;
+        tabletFlashlightSuppressed = tabletSuppressed;
+        bool enabledState = requestedState && !tabletSuppressed;
         IsFlashlightEnabledNetwork.Value = enabledState;
+        ApplyFlashlightState(enabledState);
     }
 
     private float GetCurrentOxygenValue()
@@ -663,3 +687,6 @@ public class OxygenSystem : NetworkBehaviour
         return NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
     }
 }
+
+
+

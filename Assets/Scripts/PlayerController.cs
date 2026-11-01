@@ -56,6 +56,8 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
+        if (GetComponent<BunkerTablet>() == null) gameObject.AddComponent<BunkerTablet>();
+        if (GetComponent<FirstPersonHeadVisibility>() == null) gameObject.AddComponent<FirstPersonHeadVisibility>();
         controller = GetComponent<CharacterController>();
         movementState = GetComponent<NetworkPlayerMovementState>();
         oxygenSystem = GetComponent<OxygenSystem>();
@@ -469,3 +471,5 @@ public class PlayerController : NetworkBehaviour
         return Input.GetKey(KeyCode.LeftShift) && canSprint && sprintEnergy > 0;
     }
 }
+
+

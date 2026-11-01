@@ -97,9 +97,9 @@ public class ZombieAI : NetworkBehaviour
     public Transform bodyTransform;
 
     [Header("Visibility")]
-    [Tooltip("Monster renderers are hidden beyond this distance so bunker lights remain the long-range guide.")]
+    [Tooltip("Optional extra renderer cutoff. Set to 0 to disable; camera fog controls normal distance visibility.")]
     [Min(0f)]
-    public float maxVisibleDistance = 45f;
+    public float maxVisibleDistance = 0f;
 
     [Header("Jumpscare")]
     [Tooltip("Image to show when zombie catches player")]
