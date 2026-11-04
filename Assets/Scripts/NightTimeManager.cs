@@ -22,7 +22,7 @@ public class NightTimeManager : NetworkBehaviour
 
     [Tooltip("Real-time seconds before level completion (only used when Use Custom Ending Time is enabled)")]
     [Min(0f)]
-    public float endingSequenceTriggerTime = 540f;
+    public float endingSequenceTriggerTime = 900f;
 
     [Header("Scene Settings")]
     [Tooltip("Name of the scene to load when night ends")]
@@ -86,6 +86,7 @@ public class NightTimeManager : NetworkBehaviour
 
     void Start()
     {
+        CrewStressMonitor.Install();
         if (!IsNetworkSessionActive())
         {
             InitializeLocalState();
@@ -163,8 +164,8 @@ public class NightTimeManager : NetworkBehaviour
 
     void AdvanceHour()
     {
-        hourTimer = 0f;
-        CurrentMinute = 0;
+        hourTimer -= secondsPerHour;
+        CurrentMinute = Mathf.Clamp(Mathf.FloorToInt(hourTimer / secondsPerHour * 60f), 0, 59);
         hoursElapsed++;
 
         CurrentHour++;
@@ -277,6 +278,7 @@ public class NightTimeManager : NetworkBehaviour
 
     private void InitializeLocalState()
     {
+        secondsPerHour = Mathf.Max(0.01f, secondsPerHour);
         CurrentHour = startHour;
         CurrentMinute = 0;
         hourTimer = 0f;
@@ -289,6 +291,7 @@ public class NightTimeManager : NetworkBehaviour
 
     private void InitializeNetworkState()
     {
+        secondsPerHour = Mathf.Max(0.01f, secondsPerHour);
         CurrentHour = startHour;
         CurrentMinute = 0;
         hourTimer = 0f;
@@ -310,7 +313,7 @@ public class NightTimeManager : NetworkBehaviour
         float minuteProgress = (hourTimer / secondsPerHour) * 60f;
         CurrentMinute = Mathf.FloorToInt(minuteProgress);
 
-        if (hourTimer >= secondsPerHour)
+        while (hourTimer >= secondsPerHour && !endingTriggered)
         {
             AdvanceHour();
         }
@@ -333,7 +336,7 @@ public class NightTimeManager : NetworkBehaviour
         float minuteProgress = (hourTimer / secondsPerHour) * 60f;
         CurrentMinute = Mathf.FloorToInt(minuteProgress);
 
-        if (hourTimer >= secondsPerHour)
+        while (hourTimer >= secondsPerHour && !endingTriggered)
         {
             AdvanceHour();
         }

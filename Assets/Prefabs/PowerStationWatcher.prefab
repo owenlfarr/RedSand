@@ -47,7 +47,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 3205755293
+  GlobalObjectIdHash: 2657219841
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -111,6 +111,9 @@ MonoBehaviour:
   spottedSound: {fileID: 0}
   spottedVolume: 0.12
   visual: {fileID: 5701680301997656350}
+  deathJumpscareImage: {fileID: 2800000, guid: 7fda5894ff49aa4458f15a7d76d33b87, type: 3}
+  deathJumpscareSound: {fileID: 8300000, guid: 33a93174b3380f747a1a7d4d6a7b129d, type: 3}
+  deathJumpscareDuration: 2
   State:
     m_InternalValue: 0
   Target:

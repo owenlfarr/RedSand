@@ -13,6 +13,7 @@ namespace Networking
         private readonly HashSet<ulong> survivors = new HashSet<ulong>();
         private NetworkManager manager;
         private string destination;
+        private string pendingDestination;
         private bool transferring;
         private bool hasRoster;
         private Coroutine spawnRoutine;
@@ -25,6 +26,10 @@ namespace Networking
 
         public bool IsEliminated(ulong clientId) => hasRoster && !survivors.Contains(clientId);
         public bool IsTransferring => transferring;
+        public void MarkRevived(ulong clientId)
+        {
+            if (manager != null && manager.IsServer) survivors.Add(clientId);
+        }
 
         public void TransferToLevel(string sceneName)
         {
@@ -48,10 +53,12 @@ namespace Networking
 
             if (survivors.Count == 0)
             {
-                Debug.Log("[Level Progression] No survivors; next level will not start.");
+                if (manager.GetComponent<ReviveSession>()?.Current.Active == true) pendingDestination = sceneName;
+                Debug.Log("[Level Progression] No survivors; waiting for any paid revival before advancing.");
                 return;
             }
 
+            pendingDestination = null;
             destination = sceneName;
             hasRoster = true;
             transferring = true;
@@ -118,6 +125,13 @@ namespace Networking
 
         private void Update()
         {
+            if (manager != null && manager.IsServer && manager.IsListening && !transferring &&
+                pendingDestination != null && manager.GetComponent<ReviveSession>()?.Current.Active != true)
+            {
+                string next = pendingDestination;
+                pendingDestination = null;
+                TransferToLevel(next);
+            }
             // A new party or a return to the menu starts a fresh campaign roster.
             if (manager != null && (!manager.IsListening || SceneManager.GetActiveScene().name == "MainMenu"))
             {
@@ -126,6 +140,7 @@ namespace Networking
                 if (spawnRoutine != null) StopCoroutine(spawnRoutine);
                 spawnRoutine = null;
                 hasRoster = false;
+                pendingDestination = null;
                 survivors.Clear();
                 transferring = false;
             }

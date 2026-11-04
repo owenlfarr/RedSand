@@ -228,7 +228,7 @@ public class CompassPointer : MonoBehaviour
             NetworkManager.Singleton.LocalClient != null &&
             NetworkManager.Singleton.LocalClient.PlayerObject != null)
         {
-            nextPlayer = NetworkManager.Singleton.LocalClient.PlayerObject.transform;
+            nextPlayer = PlayerDeathSpectator.HudPlayer;
         }
         else
         {

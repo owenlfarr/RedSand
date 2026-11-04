@@ -134,6 +134,7 @@ public class OxygenSystem : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         if (!IsNetworkSessionActive())
         {
             if (isDead) return;
@@ -307,10 +308,21 @@ public class OxygenSystem : NetworkBehaviour
         }
     }
 
-    void UpdateOxygenUI()
+    void LateUpdate()
     {
-        float oxygenValue = GetCurrentOxygenValue();
-        float oxygenPercent = (oxygenValue / maxOxygen) * 100f;
+        if (!IsSpawned || !IsOwner || oxygenState == null || !oxygenState.IsDead.Value) return;
+        EnsureLocalUIReferences();
+        var watched = PlayerDeathSpectator.HudPlayer;
+        var source = watched != null ? watched.GetComponent<OxygenSystem>() : null;
+        UpdateOxygenUI(source);
+    }
+
+    void UpdateOxygenUI(OxygenSystem source = null)
+    {
+        if (source == null) source = this;
+        float oxygenValue = source.GetCurrentOxygenValue();
+        float capacity = Mathf.Max(0.01f, source.maxOxygen);
+        float oxygenPercent = (oxygenValue / capacity) * 100f;
 
         if (oxygenText != null)
         {
@@ -332,7 +344,7 @@ public class OxygenSystem : NetworkBehaviour
 
         if (oxygenBarFill != null)
         {
-            float fillValue = oxygenValue / maxOxygen;
+            float fillValue = Mathf.Clamp01(oxygenValue / capacity);
             oxygenBarFill.fillAmount = fillValue;
 
             if (oxygenPercent <= 25f)

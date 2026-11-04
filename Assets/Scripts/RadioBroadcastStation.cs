@@ -18,6 +18,7 @@ public class RadioBroadcastStation : MonoBehaviour
     private bool isLookingAtRadio;
     private bool isBroadcasting;
     private bool ownsPrompt;
+    private float nextStartAttempt;
 
     private void Start()
     {
@@ -97,27 +98,27 @@ public class RadioBroadcastStation : MonoBehaviour
 
     private void RefreshLocalCamera()
     {
-        if (localCameraTransform != null && localCameraTransform.gameObject.activeInHierarchy)
+        localCameraTransform = null;
+        if (ReviveAudioGate.IsSilencingLocalPlayer || Cursor.lockState != CursorLockMode.Locked || Time.timeScale == 0f) return;
+        var manager = NetworkManager.Singleton;
+        if (manager != null && manager.IsListening)
         {
+            var player = manager.LocalClient?.PlayerObject?.GetComponent<PlayerController>();
+            if (CanBroadcast(player)) localCameraTransform = player.playerCamera;
             return;
         }
+        var camera = Camera.main;
+        if (camera != null && CanBroadcast(camera.GetComponentInParent<PlayerController>())) localCameraTransform = camera.transform;
+    }
 
-        if (NetworkManager.Singleton != null &&
-            NetworkManager.Singleton.IsListening &&
-            NetworkManager.Singleton.LocalClient?.PlayerObject != null)
-        {
-            PlayerController player = NetworkManager.Singleton.LocalClient.PlayerObject.GetComponent<PlayerController>();
-            if (player != null && player.playerCamera != null)
-            {
-                localCameraTransform = player.playerCamera;
-                return;
-            }
-        }
+    public static bool CanBroadcast(PlayerController player) => player != null && player.isActiveAndEnabled &&
+        (!player.IsSpawned || player.IsOwner) && !(player.GetComponent<OxygenSystem>()?.IsDead() ?? false);
 
-        if (Camera.main != null)
-        {
-            localCameraTransform = Camera.main.transform;
-        }
+    private void OnDestroy()
+    {
+        StopBroadcasting();
+        if (ownsPrompt && interactionPromptText != null && interactionPromptText.transform.parent != null)
+            Destroy(interactionPromptText.transform.parent.gameObject);
     }
 
     private void CheckLookTarget()
@@ -149,8 +150,8 @@ public class RadioBroadcastStation : MonoBehaviour
 
         if (Input.GetKey(InteractionKey))
         {
-            ShowPrompt("Broadcasting...");
             StartBroadcasting();
+            ShowPrompt(voiceChatManager != null && voiceChatManager.IsRadioBroadcasting ? "Broadcasting..." : "Connecting PA...");
         }
         else
         {
@@ -161,7 +162,7 @@ public class RadioBroadcastStation : MonoBehaviour
 
     private void StartBroadcasting()
     {
-        if (isBroadcasting)
+        if (voiceChatManager != null && voiceChatManager.IsRadioBroadcasting || Time.unscaledTime < nextStartAttempt)
         {
             return;
         }
@@ -171,6 +172,7 @@ public class RadioBroadcastStation : MonoBehaviour
             voiceChatManager = FindObjectOfType<VoiceChatManager>(true);
         }
 
+        nextStartAttempt = Time.unscaledTime + 0.5f;
         voiceChatManager?.BeginRadioBroadcast();
         isBroadcasting = true;
     }

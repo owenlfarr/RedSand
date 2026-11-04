@@ -119,6 +119,7 @@ public class DefenseSystem : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         RefreshLocalPlayerReference();
 
         if (playerTransform == null)
@@ -139,7 +140,7 @@ public class DefenseSystem : NetworkBehaviour
             {
                 UpdateInteractionPromptDuringCooldown();
             }
-            else if (Input.GetKeyDown(INTERACTION_KEY))
+            else if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(INTERACTION_KEY))
             {
                 if (IsNetworkSessionActive())
                 {
@@ -357,6 +358,7 @@ public class DefenseSystem : NetworkBehaviour
             return;
         }
 
+        DrillSystem.CancelForScene(gameObject.scene);
         GameObject[] monsters = GameObject.FindGameObjectsWithTag(monsterTag);
         if (monsters.Length == 0)
         {

@@ -91,6 +91,12 @@ public class BunkerCompassPointer : MonoBehaviour
 
     void Update()
     {
+        var watched = PlayerDeathSpectator.HudPlayer;
+        if (watched != null && watched != playerTransform)
+        {
+            playerTransform = watched;
+            oxygenSystem = watched.GetComponent<OxygenSystem>();
+        }
         UpdateVisibility();
         UpdateNeedleRotation();
         UpdateFade();

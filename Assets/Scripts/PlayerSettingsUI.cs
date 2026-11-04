@@ -2,11 +2,17 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
+using Unity.Netcode;
 
 /// <summary>Local display/audio preferences and persistent FPS display.</summary>
+[DefaultExecutionOrder(-200)]
 public sealed class PlayerSettingsUI : MonoBehaviour
 {
     private const string Prefix = "RedSand.Settings.";
+    public static int VolumeRevision { get; private set; }
+    public static float PreferredVolume => Mathf.Clamp01(PlayerPrefs.GetFloat(Prefix + "Volume", AudioListener.volume));
     private static PlayerSettingsUI instance;
     private readonly List<Vector2Int> resolutions = new List<Vector2Int>();
     private readonly int[] caps = { -1, 60, 90, 120, 144, 165, 240 };
@@ -21,6 +27,86 @@ public sealed class PlayerSettingsUI : MonoBehaviour
     private float confirmDeadline, sampleTime;
     private int frameCount, previousWidth, previousHeight;
     private FullScreenMode previousMode;
+    private GameObject gameMenu, gameSettings, gameHome;
+    public static bool IsGameMenuOpen => instance != null && instance.gameMenu != null && instance.gameMenu.activeSelf;
+
+    private bool IsGameplayScene() => NightTimeManager.Instance != null ||
+        SceneManager.GetActiveScene().name.StartsWith("Night", System.StringComparison.OrdinalIgnoreCase);
+
+    private void BuildGameMenu()
+    {
+        gameMenu = new GameObject("In-game Escape Menu", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        var canvas = gameMenu.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay; canvas.sortingOrder = 30000;
+        var scaler = gameMenu.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080); scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+        var shade = new GameObject("Backdrop", typeof(RectTransform), typeof(Image));
+        shade.transform.SetParent(gameMenu.transform, false);
+        var sr = shade.GetComponent<RectTransform>(); sr.anchorMin = Vector2.zero; sr.anchorMax = Vector2.one; sr.offsetMin = sr.offsetMax = Vector2.zero;
+        shade.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
+        font = TMP_Settings.defaultFontAsset;
+        gameHome = new GameObject("Menu", typeof(RectTransform)); gameHome.transform.SetParent(gameMenu.transform, false);
+        Rect(gameHome, Vector2.zero, new Vector2(720, 500));
+        Text(gameHome.transform, "Title", "MENU", new Vector2(0, 170), new Vector2(600, 60), 34, TextAlignmentOptions.Center);
+        TMP_Text label;
+        Button(gameHome.transform, "Resume", new Vector2(0, 70), new Vector2(400, 60), CloseGameMenu, out label); label.text = "RESUME";
+        Button(gameHome.transform, "Settings", new Vector2(0, -10), new Vector2(400, 60), () => { gameHome.SetActive(false); gameSettings.SetActive(true); Refresh(); }, out label); label.text = "SETTINGS";
+        Button(gameHome.transform, "Disconnect", new Vector2(0, -90), new Vector2(400, 60), DisconnectGame, out label); label.text = "DISCONNECT";
+        gameSettings = new GameObject("Game Settings", typeof(RectTransform), typeof(Image)); gameSettings.transform.SetParent(gameMenu.transform, false);
+        Rect(gameSettings, Vector2.zero, new Vector2(720, 860)); gameSettings.GetComponent<Image>().color = new Color(.035f, .025f, .02f, 1);
+        Text(gameSettings.transform, "Title", "SETTINGS", Vector2.zero, new Vector2(640, 52), 34, TextAlignmentOptions.Center);
+        Text(gameSettings.transform, "SensitivityLabel", "MOUSE SENSITIVITY", Vector2.zero, new Vector2(390, 36), 20, TextAlignmentOptions.Left);
+        var sensitivityText = Text(gameSettings.transform, "SensitivityValue", "", Vector2.zero, new Vector2(110, 36), 20, TextAlignmentOptions.Right);
+        var sliderObject = new GameObject("SensitivitySlider", typeof(RectTransform), typeof(Image), typeof(Slider));
+        sliderObject.transform.SetParent(gameSettings.transform, false); Rect(sliderObject, Vector2.zero, new Vector2(580, 32));
+        sliderObject.GetComponent<Image>().color = new Color(.16f, .12f, .08f);
+        var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image)); handle.transform.SetParent(sliderObject.transform, false);
+        Rect(handle, Vector2.zero, new Vector2(24, 38)); handle.GetComponent<Image>().color = new Color(1, .68f, .36f);
+        var slider = sliderObject.GetComponent<Slider>(); slider.minValue = .25f; slider.maxValue = 8;
+        slider.handleRect = handle.GetComponent<RectTransform>(); slider.targetGraphic = handle.GetComponent<Image>();
+        float sensitivity = Mathf.Clamp(PlayerPrefs.GetFloat("MouseSensitivity", 2), .25f, 8);
+        slider.SetValueWithoutNotify(sensitivity); sensitivityText.text = sensitivity.ToString("0.00");
+        slider.onValueChanged.AddListener(value => {
+            value = Mathf.Round(value * 100) / 100; sensitivityText.text = value.ToString("0.00");
+            PlayerPrefs.SetFloat("MouseSensitivity", value); PlayerPrefs.Save();
+            var player = NetworkManager.Singleton?.LocalClient?.PlayerObject;
+            if (player != null) player.GetComponent<PlayerController>().mouseSensitivity = value;
+            else foreach (var controller in FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
+                if (!controller.IsSpawned || controller.IsOwner) controller.mouseSensitivity = value;
+        });
+        Button(gameSettings.transform, "SettingsBackButton", Vector2.zero, new Vector2(220, 44), () => {
+            if (awaitingConfirmation) RevertDisplay();
+            gameSettings.SetActive(false); gameHome.SetActive(true);
+        }, out label); label.text = "BACK";
+        Build(gameSettings);
+        gameSettings.SetActive(false);
+        if (EventSystem.current == null)
+            new GameObject("Game Menu Event System", typeof(EventSystem), typeof(StandaloneInputModule));
+    }
+
+    private void CloseGameMenu()
+    {
+        if (awaitingConfirmation) RevertDisplay();
+        if (gameMenu != null) gameMenu.SetActive(false);
+        Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false;
+    }
+
+    private void DisconnectGame()
+    {
+        if (awaitingConfirmation) RevertDisplay();
+        var party = FindFirstObjectByType<Networking.RelayPartyManager>();
+        if (party != null) party.ReturnToMainMenuAfterMatch();
+        else StartCoroutine(ReturnOfflineToMenu());
+    }
+
+    private System.Collections.IEnumerator ReturnOfflineToMenu()
+    {
+        var manager = NetworkManager.Singleton;
+        if (manager != null) { manager.Shutdown(); while (manager != null && manager.ShutdownInProgress) yield return null; }
+        Time.timeScale = 1; Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        SceneManager.LoadScene("MainMenu");
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Initialize()
@@ -103,8 +189,11 @@ public sealed class PlayerSettingsUI : MonoBehaviour
         volume.onValueChanged = new Slider.SliderEvent();
         volume.minValue = 0f; volume.maxValue = 1f;
         Rect(volume.gameObject, new Vector2(0f, -196f), new Vector2(580f, 30f));
-        volume.SetValueWithoutNotify(AudioListener.volume);
-        volume.onValueChanged.AddListener(value => { AudioListener.volume = value; PlayerPrefs.SetFloat(Prefix + "Volume", value); PlayerPrefs.Save(); Refresh(); });
+        volume.SetValueWithoutNotify(PreferredVolume);
+        volume.onValueChanged.AddListener(value => {
+            if (!AudioListener.pause) AudioListener.volume = value;
+            PlayerPrefs.SetFloat(Prefix + "Volume", value); VolumeRevision++; PlayerPrefs.Save(); Refresh();
+        });
         notice = Text(root, "DisplayNotice", "", new Vector2(0f, -260f), new Vector2(640f, 55f), 14f, TextAlignmentOptions.Center);
         applyButton = Button(root, "ApplyDisplay", new Vector2(0f, -320f), new Vector2(320f, 44f), ApplyDisplay, out applyText);
         Refresh();
@@ -189,13 +278,25 @@ public sealed class PlayerSettingsUI : MonoBehaviour
         Vector2Int size = resolutions[selectedResolution]; resolutionValue.text = size.x + " x " + size.y;
         modeValue.text = modeNames[selectedMode]; vsyncValue.text = QualitySettings.vSyncCount > 0 ? "ON" : "OFF";
         capValue.text = (caps[capIndex] < 0 ? "UNLIMITED" : caps[capIndex].ToString()) + (QualitySettings.vSyncCount > 0 ? " (VSYNC)" : "");
-        fpsValue.text = showFps ? "ON" : "OFF"; volumeValue.text = Mathf.RoundToInt(AudioListener.volume * 100f) + "%";
+        fpsValue.text = showFps ? "ON" : "OFF"; volumeValue.text = Mathf.RoundToInt(PreferredVolume * 100f) + "%";
         applyText.text = awaitingConfirmation ? "KEEP DISPLAY CHANGES" : "APPLY DISPLAY";
         notice.text = awaitingConfirmation ? "Confirm display changes within 15 seconds." : "Display changes require Apply. Other options save immediately.\nVSync takes priority over the FPS limit.";
     }
 
     private void Update()
     {
+        if (IsGameplayScene() && Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (awaitingConfirmation) RevertDisplay();
+            else if (IsGameMenuOpen) CloseGameMenu();
+            else
+            {
+                if (gameMenu == null) BuildGameMenu();
+                gameMenu.SetActive(true); gameHome.SetActive(true); gameSettings.SetActive(false);
+                Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+            }
+        }
+        if (IsGameMenuOpen) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
         if (awaitingConfirmation)
         {
             if (panel == null || !panel.gameObject.activeInHierarchy || Time.unscaledTime >= confirmDeadline || Input.GetKeyDown(KeyCode.Escape)) RevertDisplay();

@@ -265,6 +265,7 @@ public class SolarFlareSystem : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         if (IsNetworkSessionActive())
         {
             RefreshLocalPlayerReferences();
@@ -360,6 +361,7 @@ public class SolarFlareSystem : NetworkBehaviour
 
         Debug.Log("<color=orange>[Solar Flare]</color> SOLAR FLARE INCOMING!");
         isFlareActive = true;
+        DrillSystem.CancelForScene(gameObject.scene);
         isRepairing = false;
         repairProgress = 0f;
         hasLocalRepairRequest = false;
@@ -648,7 +650,7 @@ public class SolarFlareSystem : NetworkBehaviour
 
         if (IsNetworkSessionActive())
         {
-            if (Input.GetKey(INTERACTION_KEY))
+            if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKey(INTERACTION_KEY))
             {
                 if (!isRepairing)
                 {
@@ -694,7 +696,7 @@ public class SolarFlareSystem : NetworkBehaviour
             return;
         }
 
-        if (Input.GetKey(INTERACTION_KEY))
+        if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKey(INTERACTION_KEY))
         {
             if (!isRepairing)
             {

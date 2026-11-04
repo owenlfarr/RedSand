@@ -39,7 +39,7 @@ public class PlayerBodyAnimator : MonoBehaviour
 
         // Read local input for the owning player, synced movement for observers.
         // Positive = forward (W), negative = backward (S).
-        float rawVertical = isRemoteSpawnedPlayer ? playerController.GetMoveInput().y : Input.GetAxis("Vertical");
+        float rawVertical = playerController.GetMoveInput().y;
 
         // Scale by actual speed so the threshold is always met when moving.
         // walkSpeed is the minimum speed, giving a velocityZ of ±walkSpeed when walking.

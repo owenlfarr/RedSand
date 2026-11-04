@@ -12,6 +12,12 @@ public class ZombieAI : NetworkBehaviour
     [Tooltip("Radius to detect player for chase mode")]
     public float detectionRadius = 10f;
 
+    public float StressChaseRange => useFOVPriority ? sightDistance : detectionRadius;
+
+    // Read only on the authority: chasing another crewmate must not mark
+    // every nearby player as being chased.
+    public bool IsChasingPlayer(Transform player) => isChasing && playerTransform == player && !IsNeutralized();
+
     [Tooltip("Speed when roaming/moving to bunker")]
     public float roamSpeed = 2f;
 
@@ -950,32 +956,11 @@ public class ZombieAI : NetworkBehaviour
 
     IEnumerator ShowZombieJumpscareCommon(bool restartScene)
     {
-        CreateJumpscareUI();
-
-        if (jumpscarePanel != null)
-        {
-            jumpscarePanel.SetActive(true);
-        }
-
-        if (zombieJumpscareSound != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(zombieJumpscareSound);
-        }
-
-        if (jumpscareImageUI != null && zombieJumpscareImage != null)
-        {
-            Rect rect = new Rect(0, 0, zombieJumpscareImage.width, zombieJumpscareImage.height);
-            Sprite newSprite = Sprite.Create(zombieJumpscareImage, rect, new Vector2(0.5f, 0.5f));
-            jumpscareImageUI.sprite = newSprite;
-            jumpscareImageUI.color = Color.white;
-        }
-
-        yield return new WaitForSecondsRealtime(jumpscareDisplayTime);
-
-        if (restartScene)
-        {
+        LocalJumpscarePresentation.Show(zombieJumpscareImage, zombieJumpscareSound, jumpscareDisplayTime);
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, jumpscareDisplayTime));
+        if (jumpscarePanel != null) jumpscarePanel.SetActive(false);
+        if (restartScene && !IsNetworkSessionActive())
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-        }
     }
 
     void CreateJumpscareUI()

@@ -158,6 +158,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         if (playerTransform == null || oxygenSystem == null)
         {
             RefreshLocalPlayerReference();
@@ -640,7 +641,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void RestoreLightsLocal()
     {
-        if (PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut)
+        if (PowerSystem.Instance != null)
         {
             PowerSystem.Instance.ApplyCurrentPowerState();
             return;
@@ -705,47 +706,11 @@ public class RushMonsterEvent : NetworkBehaviour
 
     IEnumerator ShowBuiltInJumpscare(bool restartScene)
     {
-        CreateJumpscareUI();
-
-        if (jumpscarePanel != null)
-        {
-            jumpscarePanel.SetActive(true);
-        }
-
-        if (jumpscareImageUI != null)
-        {
-            jumpscareImageUI.color = Color.black;
-        }
-
-        if (deathSound != null)
-        {
-            audioSource.PlayOneShot(deathSound);
-        }
-
-        yield return new WaitForSecondsRealtime(blackScreenDuration);
-
-        if (jumpscareImageUI != null && rushJumpscareImage != null)
-        {
-            Rect rect = new Rect(0, 0, rushJumpscareImage.width, rushJumpscareImage.height);
-            Sprite newSprite = Sprite.Create(rushJumpscareImage, rect, new Vector2(0.5f, 0.5f));
-            jumpscareImageUI.sprite = newSprite;
-            jumpscareImageUI.color = Color.white;
-        }
-
-        yield return new WaitForSecondsRealtime(imageDisplayDuration);
-
-        if (jumpscareTextUI != null && !string.IsNullOrEmpty(rushDeathMessage))
-        {
-            jumpscareTextUI.text = rushDeathMessage;
-            jumpscareTextUI.gameObject.SetActive(true);
-        }
-
-        yield return new WaitForSecondsRealtime(2f);
-
-        if (restartScene)
-        {
+        LocalJumpscarePresentation.Show(rushJumpscareImage, deathSound, imageDisplayDuration, rushDeathMessage);
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, imageDisplayDuration));
+        if (jumpscarePanel != null) jumpscarePanel.SetActive(false);
+        if (restartScene && !IsNetworkSessionActive())
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
-        }
     }
 
     void CreateJumpscareUI()

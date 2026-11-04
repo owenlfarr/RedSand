@@ -135,6 +135,16 @@ public class SCameraNightVisionInteraction : MonoBehaviour
 
     private void RefreshPlayerReference()
     {
+        var manager = Unity.Netcode.NetworkManager.Singleton;
+        if (manager != null && manager.IsListening)
+        {
+            var player = manager.LocalClient?.PlayerObject;
+            playerTransform = player != null ? player.transform : null;
+            if (player != null && player.TryGetComponent<NetworkOxygenState>(out var oxygen) && oxygen.IsDead.Value)
+                playerTransform = null;
+            return;
+        }
+
         if (playerTransform != null && playerTransform.gameObject.activeInHierarchy)
         {
             return;
@@ -157,7 +167,7 @@ public class SCameraNightVisionInteraction : MonoBehaviour
 
         ShowPrompt(IsNightVisionActive() ? "Viewing..." : promptText);
 
-        if (Input.GetKeyDown(interactionKey))
+        if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(interactionKey))
         {
             nightVisionEndTime = Time.time + nightVisionDuration;
             SetNightVisionLight(!onlyRenderForSCamera || sCamera == null);

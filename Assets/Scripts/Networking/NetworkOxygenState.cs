@@ -3,6 +3,9 @@ using Unity.Netcode;
 
 public class NetworkOxygenState : NetworkBehaviour
 {
+    public NetworkVariable<double> LastReviveCompletedAt = new NetworkVariable<double>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
     public NetworkVariable<float> CurrentOxygen = new NetworkVariable<float>(
         0f,
         NetworkVariableReadPermission.Everyone,
@@ -55,6 +58,7 @@ public class NetworkOxygenState : NetworkBehaviour
             return;
         }
 
+        LastReviveCompletedAt.Value = NetworkManager.GetComponent<ReviveSession>()?.CompletedAt(OwnerClientId) ?? 0;
         CurrentOxygen.Value = maxOxygen;
         IsInBunker.Value = false;
         bool eliminated = Networking.NetworkLevelProgression.Instance != null &&

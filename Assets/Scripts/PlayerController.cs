@@ -119,6 +119,11 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        if (PlayerSettingsUI.IsGameMenuOpen && movementState != null && IsSpawned && IsOwner)
+        {
+            movementState.MoveInput.Value = Vector2.zero;
+            movementState.IsSprinting.Value = false;
+        }
         if (!CanProcessLocalInput())
         {
             return;
@@ -145,6 +150,7 @@ public class PlayerController : NetworkBehaviour
 
     private bool CanProcessLocalInput()
     {
+        if (PlayerSettingsUI.IsGameMenuOpen) return false;
         if (oxygenSystem != null && oxygenSystem.IsDead())
         {
             return false;
@@ -172,14 +178,16 @@ public class PlayerController : NetworkBehaviour
             cameraAudioListener = playerCamera.GetComponent<AudioListener>();
         }
 
+        bool isDead = GetComponent<OxygenSystem>()?.IsDead() ?? false;
+        bool spectating = GetComponent<PlayerDeathSpectator>()?.IsSpectating ?? false;
         if (cam != null)
         {
-            cam.enabled = isLocal;
+            cam.enabled = isLocal && !isDead;
         }
 
         if (cameraAudioListener != null)
         {
-            cameraAudioListener.enabled = isLocal;
+            cameraAudioListener.enabled = isLocal && (!isDead || !spectating);
         }
 
         string activeSceneName = SceneManager.GetActiveScene().name;
@@ -198,7 +206,7 @@ public class PlayerController : NetworkBehaviour
             }
         }
 
-        if (isLocal && !isMenuScene)
+        if (isLocal && !isMenuScene && !PlayerSettingsUI.IsGameMenuOpen)
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
@@ -433,6 +441,7 @@ public class PlayerController : NetworkBehaviour
 
     public Vector2 GetMoveInput()
     {
+        if ((!IsSpawned || IsOwner) && PlayerSettingsUI.IsGameMenuOpen) return Vector2.zero;
         if (movementState != null && IsSpawned && !IsOwner)
         {
             return movementState.MoveInput.Value;
@@ -463,6 +472,7 @@ public class PlayerController : NetworkBehaviour
 
     public bool IsSprinting()
     {
+        if ((!IsSpawned || IsOwner) && PlayerSettingsUI.IsGameMenuOpen) return false;
         if (movementState != null && IsSpawned && !IsOwner)
         {
             return movementState.IsSprinting.Value;

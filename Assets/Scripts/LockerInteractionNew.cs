@@ -167,7 +167,7 @@ public class LockerInteractionNew : NetworkBehaviour
 #if ENABLE_INPUT_SYSTEM
         eKeyPressed = Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame;
 #else
-        eKeyPressed = Input.GetKeyDown(INTERACTION_KEY);
+        eKeyPressed = !PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(INTERACTION_KEY);
 #endif
 
         if (isPlayerHidden && eKeyPressed)

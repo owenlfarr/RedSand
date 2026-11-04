@@ -4,6 +4,9 @@ using Unity.Netcode;
 [RequireComponent(typeof(NetworkObject))]
 public class NetworkGameState : NetworkBehaviour
 {
+    public NetworkVariable<Unity.Collections.FixedString512Bytes> CrewStressDisplay =
+        new NetworkVariable<Unity.Collections.FixedString512Bytes>(default,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public static NetworkGameState Instance { get; private set; }
 
     public NetworkVariable<int> SessionSeedNetwork = new NetworkVariable<int>(
@@ -59,6 +62,35 @@ public class NetworkGameState : NetworkBehaviour
         }
     }
 
+    private double partyWipeStarted = -1;
+    private bool returningAfterWipe;
+
+    private void Update()
+    {
+        if (!IsSpawned || !IsServer || returningAfterWipe) return;
+        // Missing player objects during loading are not deaths.
+        bool allDead = NightTimeManager.Instance != null &&
+            Networking.NetworkLevelProgression.Instance?.IsTransferring != true &&
+            NetworkManager.ConnectedClientsList.Count > 0;
+        foreach (var client in NetworkManager.ConnectedClientsList)
+        {
+            if (client.PlayerObject == null || !client.PlayerObject.IsSpawned ||
+                !client.PlayerObject.TryGetComponent<NetworkOxygenState>(out var oxygen) || !oxygen.IsDead.Value)
+                allDead = false;
+        }
+        if (!allDead) { partyWipeStarted = -1; return; }
+        if (partyWipeStarted < 0) partyWipeStarted = Time.realtimeSinceStartupAsDouble;
+        if (Time.realtimeSinceStartupAsDouble - partyWipeStarted < 5) return;
+        returningAfterWipe = true;
+        ReturnPartyToMenuClientRpc();
+    }
+
+    [ClientRpc]
+    private void ReturnPartyToMenuClientRpc()
+    {
+        NetworkManager.GetComponent<Networking.RelayPartyManager>()?.ReturnToMainMenuAfterMatch();
+    }
+
     public override void OnDestroy()
     {
         RegisterCallbacks(false);
@@ -71,6 +103,8 @@ public class NetworkGameState : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        partyWipeStarted = -1;
+        returningAfterWipe = false;
         if (Instance == null)
         {
             Instance = this;

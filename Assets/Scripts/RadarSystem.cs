@@ -104,6 +104,7 @@ public class RadarSystem : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         RefreshLocalPlayerReference();
 
         if (playerTransform == null)
@@ -124,7 +125,7 @@ public class RadarSystem : NetworkBehaviour
             {
                 UpdateInteractionPromptDuringCooldown();
             }
-            else if (Input.GetKeyDown(INTERACTION_KEY))
+            else if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(INTERACTION_KEY))
             {
                 if (IsNetworkSessionActive())
                 {
@@ -320,6 +321,7 @@ public class RadarSystem : NetworkBehaviour
         }
 
         Debug.Log($"<color=cyan>[Radar]</color> Scanning for enemies with tag '{monsterTag}'...");
+        DrillSystem.CancelForScene(gameObject.scene);
 
         GameObject[] monsters = GameObject.FindGameObjectsWithTag(monsterTag);
         Debug.Log($"<color=cyan>[Radar]</color> Found {monsters.Length} enemies");
@@ -408,7 +410,7 @@ public class RadarSystem : NetworkBehaviour
             audioSource.PlayOneShot(radarScanSound);
         }
 
-        if (SurveyorMonster.Instance != null && IsServer)
+        if (SurveyorMonster.Instance != null && (!isNetworkSession || IsServer))
         {
             SurveyorMonster.Instance.OnRadarChecked();
         }

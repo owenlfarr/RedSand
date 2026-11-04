@@ -122,6 +122,7 @@ public class PowerSystem : NetworkBehaviour
 
     void Update()
     {
+        if (IsNetworkSessionActive() && !IsSpawned) return;
         if (IsNetworkSessionActive())
         {
             RefreshLocalPlayerTransform();
@@ -206,6 +207,7 @@ public class PowerSystem : NetworkBehaviour
         }
 
         isPowerOut = true;
+        DrillSystem.CancelForScene(gameObject.scene);
         consecutiveSafeChecks = 0;
         if (IsNetworkSessionActive())
         {
@@ -253,7 +255,7 @@ public class PowerSystem : NetworkBehaviour
             HidePowerBoxPrompt();
         }
 
-        if (isPlayerNearPowerBox && Input.GetKeyDown(INTERACTION_KEY))
+        if (isPlayerNearPowerBox && !PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(INTERACTION_KEY))
         {
             RestorePower();
         }

@@ -34,9 +34,26 @@ public class PlayerDeathSpectator : MonoBehaviour
     private int spectateIndex;
     private float previousAudioVolume = 1f;
     private bool previousAudioPause;
+    private int capturedVolumeRevision;
     private bool mutedForDeath;
     private float nextTargetSearchTime;
     private bool readyToSpectate;
+    private bool pendingNetworkDeath;
+    private bool transitioningToSpectate;
+    public bool IsSpectating => activeSpectatorCamera != null && activeSpectatorCamera.enabled && activeSpectateTarget != null;
+    public ulong SpectatedClientId => activeSpectateTarget != null ? activeSpectateTarget.OwnerClientId : ulong.MaxValue;
+
+    public static Transform HudPlayer
+    {
+        get
+        {
+            var player = NetworkManager.Singleton?.LocalClient?.PlayerObject;
+            if (player == null) return null;
+            var spectator = player.GetComponent<PlayerDeathSpectator>();
+            return spectator != null && spectator.IsSpectating
+                ? spectator.activeSpectateTarget.transform : player.transform;
+        }
+    }
 
     private void Awake()
     {
@@ -60,6 +77,8 @@ public class PlayerDeathSpectator : MonoBehaviour
     private void OnDestroy()
     {
         RestoreDeathAudio();
+        ClearSpectateCamera();
+        if (overlayCanvas != null) Destroy(overlayCanvas.gameObject);
         if (subscribedToDeathState && oxygenState != null)
         {
             oxygenState.IsDead.OnValueChanged -= OnDeadStateChanged;
@@ -96,11 +115,11 @@ public class PlayerDeathSpectator : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.D))
+        if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(KeyCode.D))
         {
             SwitchSpectateTarget(1);
         }
-        else if (Input.GetKeyDown(KeyCode.A))
+        else if (!PlayerSettingsUI.IsGameMenuOpen && Input.GetKeyDown(KeyCode.A))
         {
             SwitchSpectateTarget(-1);
         }
@@ -120,10 +139,19 @@ public class PlayerDeathSpectator : MonoBehaviour
 
     private void OnDeadStateChanged(bool previousValue, bool currentValue)
     {
-        if (currentValue)
+        // NGO applies IsDead before the following UseBlackDeathIntro field. Wait
+        // until the packet is fully applied instead of starting the wrong fade.
+        if (currentValue) pendingNetworkDeath = true;
+    }
+
+    private void LateUpdate()
+    {
+        if (pendingNetworkDeath)
         {
-            HandleDeathState();
+            pendingNetworkDeath = false;
+            if (oxygenState != null && oxygenState.IsDead.Value) HandleDeathState();
         }
+        if (localDeathSequenceStarted) ApplySpectatorPose();
     }
 
     public void HandleDeathState()
@@ -151,29 +179,32 @@ public class PlayerDeathSpectator : MonoBehaviour
     private IEnumerator LocalDeathSequence(bool useBlackIntro)
     {
         DisableLocalControlAndView();
-
-        if (useBlackIntro)
+        // The timed jumpscare is above this blackout. It stays continuously visible
+        // until it expires, then this layer fades to the spectator camera.
+        ShowBlackOverlay(1f);
+        if (useBlackIntro && !ReviveAudioGate.IsSilencingLocalPlayer)
         {
-            ShowBlackOverlay(1f);
             previousAudioVolume = AudioListener.volume;
             previousAudioPause = AudioListener.pause;
+            capturedVolumeRevision = PlayerSettingsUI.VolumeRevision;
             mutedForDeath = true;
             AudioListener.volume = 0f;
             AudioListener.pause = true;
         }
-
-        yield return new WaitForSecondsRealtime(spectatorActivationDelay);
-
+        float deadline = Time.unscaledTime + spectatorActivationDelay;
+        while (Time.unscaledTime < deadline ||
+            (GetComponent<LocalJumpscarePresentation>() != null && GetComponent<LocalJumpscarePresentation>().IsShowing))
+            yield return null;
         readyToSpectate = true;
+        transitioningToSpectate = true;
         SelectFirstSpectateTarget();
-
         RestoreDeathAudio();
-
-        if (useBlackIntro && activeSpectatorCamera != null)
+        if (activeSpectatorCamera != null)
         {
-            yield return StartCoroutine(FadeBlackOverlay(0f));
+            yield return FadeBlackOverlay(0f);
             HideBlackOverlay();
         }
+        transitioningToSpectate = false;
     }
 
     private void RestoreDeathAudio()
@@ -181,8 +212,19 @@ public class PlayerDeathSpectator : MonoBehaviour
         // Scene transfer may destroy this component while its delay is running.
         if (!mutedForDeath) return;
         AudioListener.pause = previousAudioPause;
-        AudioListener.volume = previousAudioVolume;
+        AudioListener.volume = capturedVolumeRevision != PlayerSettingsUI.VolumeRevision ? PlayerSettingsUI.PreferredVolume : previousAudioVolume;
         mutedForDeath = false;
+    }
+    public void ReleaseDeathAudioForRevive() { RestoreDeathAudio(); }
+    public void ContinueDeathMuteAfterRevive(float volume, bool pause)
+    {
+        // A second oxygen death on the spawn frame owns its own short intro mute.
+        // Releasing revive silence must neither strand audio nor erase that intro.
+        if (!localDeathSequenceStarted || readyToSpectate || oxygenSystem == null || !oxygenSystem.IsDead() ||
+            !oxygenSystem.ShouldUseBlackDeathIntro()) return;
+        previousAudioVolume = volume; previousAudioPause = pause; mutedForDeath = true;
+        capturedVolumeRevision = PlayerSettingsUI.VolumeRevision;
+        AudioListener.volume = 0f; AudioListener.pause = true;
     }
 
     private void CacheReferences()
@@ -381,7 +423,8 @@ public class PlayerDeathSpectator : MonoBehaviour
 
         if (playerAudioListener != null)
         {
-            playerAudioListener.enabled = false;
+            // Keep one local listener for the scare audio until spectating starts.
+            playerAudioListener.enabled = true;
         }
 
         DisableLocalSpectatorCamera();
@@ -506,9 +549,10 @@ public class PlayerDeathSpectator : MonoBehaviour
             activeSpectatorListener = spectatorTransform.gameObject.AddComponent<AudioListener>();
         }
 
+        if (playerAudioListener != null) playerAudioListener.enabled = false;
         activeSpectatorCamera.enabled = true;
         activeSpectatorListener.enabled = true;
-        if (!mutedForDeath) HideBlackOverlay();
+        if (!mutedForDeath && !transitioningToSpectate) HideBlackOverlay();
         ApplySpectatorPose();
     }
 

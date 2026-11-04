@@ -97,11 +97,7 @@ public class AmbianceSystem : MonoBehaviour
     {
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening && NetworkManager.Singleton.LocalClient != null)
         {
-            var localPlayerObject = NetworkManager.Singleton.LocalClient.PlayerObject;
-            if (localPlayerObject != null)
-            {
-                playerTransform = localPlayerObject.transform;
-            }
+            playerTransform = PlayerDeathSpectator.HudPlayer;
             return;
         }
 

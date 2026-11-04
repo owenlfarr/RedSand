@@ -68,6 +68,15 @@ namespace Networking
 
         private string joinCodeInput = "";
         private bool isBusy;
+        private RelayLobbyBrowser lobbyBrowser;
+        private Task<bool> servicesReadyTask;
+        public RelayLobbyBrowser LobbyBrowser => lobbyBrowser;
+        public bool PartyBusy => isBusy;
+        public bool MatchStarted => matchStarted;
+        public string MenuSceneName => menuSceneName;
+        public string LocalDisplayName => GetLocalUserName();
+        public string GetPlayerDisplayName(ulong clientId) => GetLobbyDisplayName(clientId, "Player " + (clientId + 1));
+        public Task<bool> PrepareLobbyServicesAsync() => EnsureServicesReady();
         private int partyRequestVersion;
         private bool matchStarted;
         private bool lobbyCreated;
@@ -132,6 +141,9 @@ namespace Networking
             InitializeAstronautFloatSlots(true);
             EnsureLoadingIndicatorExists();
             UpdateLobbyAstronautVisuals();
+            lobbyBrowser = GetComponent<RelayLobbyBrowser>();
+            if (lobbyBrowser == null) lobbyBrowser = gameObject.AddComponent<RelayLobbyBrowser>();
+            lobbyBrowser.Initialize(this);
             await EnsureServicesReady();
         }
 
@@ -254,7 +266,7 @@ namespace Networking
             GUILayout.EndArea();
         }
 
-        public async Task CreateParty()
+        public async Task CreateParty(bool publicLobby = false)
         {
             if (isBusy) return;
             isBusy = true;
@@ -331,6 +343,7 @@ namespace Networking
                 _ = TryJoinVoiceSafely(latestJoinCode);
                 SetLobbyUIState(true);
                 RefreshLobbyCodeUI();
+                if (lobbyBrowser != null) await lobbyBrowser.HostReady(publicLobby, latestJoinCode, GetLocalUserName());
             }
             catch (Exception ex)
             {
@@ -344,6 +357,34 @@ namespace Networking
         }
 
         public void StartMatch()
+        {
+            if (isBusy || matchStarted) return;
+            _ = StartMatchWithListingAsync();
+        }
+
+        private async Task StartMatchWithListingAsync()
+        {
+            isBusy = true;
+            try
+            {
+                if (lobbyBrowser != null && !await lobbyBrowser.HideForStart())
+                {
+                    statusText = "Could not close the public listing. Please try Start again.";
+                    return;
+                }
+                isBusy = false;
+                StartMatchCore();
+                if (!matchStarted && lobbyBrowser != null) await lobbyBrowser.RestoreAfterFailedStart();
+            }
+            catch (Exception exception)
+            {
+                statusText = "Could not start game. Please try again.";
+                Debug.LogWarning("[RelayPartyManager] Start failed: " + exception.Message);
+            }
+            finally { isBusy = false; }
+        }
+
+        private void StartMatchCore()
         {
             if (isBusy || matchStarted)
             {
@@ -461,12 +502,14 @@ namespace Networking
 
         public void CreateLobbyFromUI()
         {
-            _ = CreateParty();
+            if (lobbyBrowser != null) lobbyBrowser.ShowHostOptions();
+            else _ = CreateParty();
         }
 
         public void JoinLobbyFromUI()
         {
             string code = ReadJoinCodeFromUI();
+            if (string.IsNullOrWhiteSpace(code) && lobbyBrowser != null) { lobbyBrowser.ShowBrowser(); return; }
             Debug.Log($"[RelayPartyManager] JoinLobbyFromUI clicked. Code='{code}'.");
             _ = JoinParty(code);
         }
@@ -481,8 +524,34 @@ namespace Networking
             LeaveLobbyFromUI();
         }
 
+        private bool returningToMainMenu;
+
+        public async void ReturnToMainMenuAfterMatch()
+        {
+            if (returningToMainMenu) return;
+            returningToMainMenu = true;
+            try
+            {
+                var nm = NetworkManager.Singleton;
+                // Let the host's reliable return message reach the other clients.
+                if (nm != null && nm.IsServer) await Task.Delay(250);
+                LeaveLobbyFromUI();
+                if (nm != null && !await EnsureNetworkStoppedAsync(nm))
+                {
+                    Debug.LogError("[RelayPartyManager] Network shutdown timed out before returning to menu.");
+                    return;
+                }
+                Time.timeScale = 1f;
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+                SceneManager.LoadScene(menuSceneName);
+            }
+            finally { returningToMainMenu = false; }
+        }
+
         public void LeaveLobbyFromUI()
         {
+            if (lobbyBrowser != null) _ = lobbyBrowser.StopAdvertising();
             ++partyRequestVersion; // Invalidate any Relay/auth request still awaiting completion.
             var nm = NetworkManager.Singleton;
             if (nm != null)
@@ -547,6 +616,12 @@ namespace Networking
             bool localClientWasDisconnected = nm != null && clientId == nm.LocalClientId && !nm.IsServer;
             bool hostDisconnectedClient = nm != null && !nm.IsServer && clientId == NetworkManager.ServerClientId;
 
+            if ((localClientWasDisconnected || hostDisconnectedClient) && matchStarted)
+            {
+                ReturnToMainMenuAfterMatch();
+                return;
+            }
+
             lobbyPlayerNames.Remove(clientId);
 
             if (nm != null && nm.IsServer)
@@ -585,7 +660,13 @@ namespace Networking
             }
         }
 
-        private async Task<bool> EnsureServicesReady()
+        private Task<bool> EnsureServicesReady()
+        {
+            if (servicesReadyTask == null || servicesReadyTask.IsCompleted) servicesReadyTask = InitializeServicesAsync();
+            return servicesReadyTask;
+        }
+
+        private async Task<bool> InitializeServicesAsync()
         {
             try
             {

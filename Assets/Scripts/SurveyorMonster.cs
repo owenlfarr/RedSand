@@ -98,6 +98,7 @@ public class SurveyorMonster : NetworkBehaviour
         movementAudioSource.spatialBlend = 0f;
         movementAudioSource.playOnAwake = false;
         movementAudioSource.loop = true;
+        currentDistance = startingDistance;
     }
 
     void Start()
@@ -113,7 +114,6 @@ public class SurveyorMonster : NetworkBehaviour
 
         if (objectiveTransform != null)
         {
-            currentDistance = startingDistance;
             Vector3 directionAway = (transform.position - objectiveTransform.position).normalized;
             if (directionAway == Vector3.zero)
             {
@@ -162,6 +162,7 @@ public class SurveyorMonster : NetworkBehaviour
 
         if (IsNetworkSessionActive())
         {
+            if (!IsSpawned) return;
             if (IsServer)
             {
                 UpdateServerState();
@@ -280,7 +281,7 @@ public class SurveyorMonster : NetworkBehaviour
             return;
         }
 
-        if (timeSinceLastRadarCheck < activationDelay)
+        if (!isRetreating && timeSinceLastRadarCheck < activationDelay)
         {
             isCurrentlyMoving = false;
             UpdateMovementSound();
@@ -353,7 +354,7 @@ public class SurveyorMonster : NetworkBehaviour
 
     public void OnRadarChecked()
     {
-        if (IsNetworkSessionActive() && !IsServer)
+        if (IsNetworkSessionActive() && (!IsSpawned || !IsServer))
         {
             return;
         }
@@ -411,18 +412,6 @@ public class SurveyorMonster : NetworkBehaviour
 
         hasKilled = true;
         Debug.Log("<color=red>[Surveyor]</color> It got too close. You never saw it coming...");
-
-        if (movementAudioSource != null && movementAudioSource.isPlaying)
-        {
-            movementAudioSource.Stop();
-        }
-
-        if (killSound != null && audioSource != null)
-        {
-            audioSource.Stop();
-            audioSource.loop = false;
-            audioSource.PlayOneShot(killSound);
-        }
 
         List<ulong> targetClients = new List<ulong>();
         if (NetworkManager.Singleton != null)
@@ -484,6 +473,14 @@ public class SurveyorMonster : NetworkBehaviour
     [ClientRpc]
     private void ShowSurveyorDeathClientRpc()
     {
+        hasKilled = true;
+        isCurrentlyMoving = false;
+        if (movementAudioSource != null) movementAudioSource.Stop();
+        if (audioSource != null)
+        {
+            audioSource.Stop(); audioSource.loop = false;
+            if (killSound != null) audioSource.PlayOneShot(killSound);
+        }
         StartCoroutine(ShowSurveyorDeath(false));
     }
 
@@ -503,46 +500,10 @@ public class SurveyorMonster : NetworkBehaviour
 
     IEnumerator ShowSurveyorDeath(bool restartScene)
     {
-        Canvas blackCanvas = new GameObject("SurveyorDeathCanvas").AddComponent<Canvas>();
-        blackCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        blackCanvas.sortingOrder = 9999;
-
-        CanvasScaler scaler = blackCanvas.gameObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-
-        GameObject blackPanel = new GameObject("BlackScreen");
-        blackPanel.transform.SetParent(blackCanvas.transform, false);
-
-        UnityEngine.UI.Image blackImage = blackPanel.AddComponent<UnityEngine.UI.Image>();
-        blackImage.color = Color.black;
-
-        RectTransform rt = blackPanel.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.sizeDelta = Vector2.zero;
-
-        GameObject textObj = new GameObject("DeathText");
-        textObj.transform.SetParent(blackCanvas.transform, false);
-
-        TextMeshProUGUI deathText = textObj.AddComponent<TextMeshProUGUI>();
-        deathText.text = deathMessage;
-        deathText.fontSize = 48;
-        deathText.color = Color.white;
-        deathText.alignment = TextAlignmentOptions.Center;
-
-        RectTransform textRt = textObj.GetComponent<RectTransform>();
-        textRt.anchorMin = new Vector2(0.5f, 0.5f);
-        textRt.anchorMax = new Vector2(0.5f, 0.5f);
-        textRt.sizeDelta = new Vector2(800, 200);
-        textRt.anchoredPosition = Vector2.zero;
-
+        LocalJumpscarePresentation.Show(surveyorJumpscareImage, null, 3f, deathMessage);
         yield return new WaitForSecondsRealtime(3f);
-
-        if (restartScene)
-        {
-            UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
-        }
+        if (restartScene && !IsNetworkSessionActive())
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
     public float GetCurrentDistance()
@@ -567,6 +528,8 @@ public class SurveyorMonster : NetworkBehaviour
         currentDistance = CurrentDistanceNetwork.Value;
         isRetreating = IsRetreatingNetwork.Value;
         timeSinceLastRadarCheck = TimeSinceLastRadarCheckNetwork.Value;
+        isCurrentlyMoving = !isRetreating && timeSinceLastRadarCheck >= activationDelay &&
+            !(PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut);
 
         if (objectiveTransform != null)
         {
@@ -580,6 +543,13 @@ public class SurveyorMonster : NetworkBehaviour
 
             transform.position = objectiveTransform.position + directionAway * currentDistance;
         }
+    }
+
+    public override void OnNetworkDespawn() { if (Instance == this) Instance = null; }
+    public override void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        base.OnDestroy();
     }
 
     bool IsNetworkSessionActive()

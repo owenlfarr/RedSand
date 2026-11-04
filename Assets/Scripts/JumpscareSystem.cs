@@ -84,12 +84,10 @@ public class JumpscareSystem : NetworkBehaviour
         audioSource.spatialBlend = 0f;
     }
 
-    void OnDestroy()
+    public override void OnDestroy()
     {
-        if (Instance == this)
-        {
-            Instance = null;
-        }
+        if (Instance == this) Instance = null;
+        base.OnDestroy();
     }
 
     void Start()
@@ -170,67 +168,34 @@ public class JumpscareSystem : NetworkBehaviour
 
     IEnumerator JumpscareSequence(Sprite sprite, Texture2D texture, string message, AudioClip customSound)
     {
+        if (isJumpscareActive) yield break;
         RefreshLocalPlayerReference();
         isJumpscareActive = true;
-        if (IsNetworkSessionActive() && IsServer)
-        {
-            JumpscareActiveNetwork.Value = true;
-        }
-
-        Debug.Log("<color=red>[Jumpscare]</color> TRIGGERED!");
-
+        if (IsNetworkSessionActive() && IsServer && IsSpawned) JumpscareActiveNetwork.Value = true;
+        bool controllerWasEnabled = playerController != null && playerController.enabled;
+        bool colliderWasEnabled = characterController != null && characterController.enabled;
         if (disablePlayerMovement)
         {
             if (playerController != null) playerController.enabled = false;
             if (characterController != null) characterController.enabled = false;
         }
-
-        if (playerCamera != null)
+        if (sprite == null && texture == null && jumpscareImage != null) sprite = jumpscareImage.sprite;
+        LocalJumpscarePresentation.Show(texture, customSound != null ? customSound : jumpscareSound, jumpscareDuration, message, sprite);
+        try { yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, jumpscareDuration)); }
+        finally
         {
-            originalCameraPosition = playerCamera.transform.localPosition;
-        }
-
-        AudioClip soundToPlay = customSound != null ? customSound : jumpscareSound;
-        if (soundToPlay != null)
-        {
-            audioSource.volume = jumpscareVolume;
-            audioSource.PlayOneShot(soundToPlay);
-        }
-
-        if (jumpscareImage != null)
-        {
-            jumpscareImage.gameObject.SetActive(true);
-            
-            if (sprite != null)
+            if (jumpscareImage != null) jumpscareImage.gameObject.SetActive(false);
+            if (jumpscareText != null) jumpscareText.gameObject.SetActive(false);
+            if (resetPromptText != null) resetPromptText.gameObject.SetActive(false);
+            isJumpscareActive = false;
+            if (IsNetworkSessionActive() && IsServer && IsSpawned) JumpscareActiveNetwork.Value = false;
+            var oxygen = playerController != null ? playerController.GetComponent<OxygenSystem>() : null;
+            // Death/spectator owns dead-player controls. Non-lethal scares restore their previous state.
+            if (oxygen == null || !oxygen.IsDead())
             {
-                jumpscareImage.sprite = sprite;
+                if (playerController != null) playerController.enabled = controllerWasEnabled;
+                if (characterController != null) characterController.enabled = colliderWasEnabled;
             }
-            else if (texture != null)
-            {
-                Rect rect = new Rect(0, 0, texture.width, texture.height);
-                jumpscareImage.sprite = Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f));
-            }
-
-            yield return StartCoroutine(FadeInImage());
-        }
-
-        if (!string.IsNullOrEmpty(message) && jumpscareText != null)
-        {
-            jumpscareText.text = message;
-            jumpscareText.gameObject.SetActive(true);
-        }
-
-        if (enableCameraShake && playerCamera != null)
-        {
-            yield return StartCoroutine(ShakeCamera());
-        }
-
-        yield return new WaitForSeconds(jumpscareDuration);
-
-        if (resetPromptText != null)
-        {
-            yield return new WaitForSeconds(resetPromptDelay);
-            resetPromptText.gameObject.SetActive(true);
         }
     }
 

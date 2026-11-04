@@ -22,6 +22,10 @@ public sealed class PowerStationWatcher : NetworkBehaviour
     public AudioClip spottedSound;
     [Range(0f, 1f)] public float spottedVolume = 0.12f;
     public GameObject visual;
+    [Header("Victim death jumpscare")]
+    public Texture2D deathJumpscareImage;
+    public AudioClip deathJumpscareSound;
+    [Min(0.1f)] public float deathJumpscareDuration = 2f;
 
     public NetworkVariable<int> State = new NetworkVariable<int>((int)Phase.Roaming);
     public NetworkVariable<ulong> Target = new NetworkVariable<ulong>(ulong.MaxValue);
@@ -56,6 +60,8 @@ public sealed class PowerStationWatcher : NetworkBehaviour
     bool pendingActivity;
     double pendingSampleAt;
     float nextReport;
+    bool receivedDeathScare;
+    uint lastDeathScareEncounter;
     readonly RaycastHit[] sightHits = new RaycastHit[64];
     public double Clock => NetworkManager != null && NetworkManager.IsListening ? NetworkManager.ServerTime.Time : Time.timeAsDouble;
     public double GraceEnds => StartedAt.Value + reactionSeconds;
@@ -80,6 +86,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
         offlineInitialized = false;
         offlineVictim = null;
         sampledLocal = false;
+        receivedDeathScare = false;
         if (effect != null) effect.SetExposure(0f, staticFadeSeconds);
         home = patrolCenter != null ? patrolCenter.position : transform.position;
         home.y = transform.position.y;
@@ -238,15 +245,33 @@ public sealed class PowerStationWatcher : NetworkBehaviour
 
     void FailEncounter(NetworkObject player)
     {
-        // Server changes only this victim's death state. Existing death/spectator flow handles presentation.
+        if (!IsServer || !IsEligible(player)) return;
+        // Death remains authoritative; only the victim receives the timed presentation.
         var oxygen = player.GetComponent<NetworkOxygenState>();
         if (oxygen != null)
         {
             oxygen.UseBlackDeathIntro.Value = false;
             oxygen.IsDead.Value = true;
         }
+        PlayDeathJumpscareClientRpc(Encounter.Value, new ClientRpcParams {
+            Send = new ClientRpcSendParams { TargetClientIds = new[] { player.OwnerClientId } }
+        });
         Debug.Log($"[Watcher] Client {player.OwnerClientId} broke stillness in encounter {Encounter.Value}.");
         Disappear();
+    }
+
+    [ClientRpc]
+    void PlayDeathJumpscareClientRpc(uint encounter, ClientRpcParams clientRpcParams = default)
+    {
+        if (receivedDeathScare && lastDeathScareEncounter == encounter) return;
+        receivedDeathScare = true;
+        lastDeathScareEncounter = encounter;
+        ShowDeathJumpscare();
+    }
+
+    void ShowDeathJumpscare()
+    {
+        LocalJumpscarePresentation.Show(deathJumpscareImage, deathJumpscareSound, deathJumpscareDuration);
     }
 
     void Disappear()
@@ -324,6 +349,9 @@ public sealed class PowerStationWatcher : NetworkBehaviour
             Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ||
             Input.GetMouseButton(0) || Input.GetMouseButton(1) || Input.GetKey(KeyCode.E) || Input.GetKey(KeyCode.F);
         for (int i = 0; i <= 9; i++) active |= Input.GetKey((KeyCode)((int)KeyCode.Alpha0 + i));
+        // Menu clicks and mouse travel do not move the character. Keep the
+        // actual pose checks below active, including any external movement.
+        if (PlayerSettingsUI.IsGameMenuOpen) active = false;
         if (sampledLocal)
             active |= (subject.position - previousLocalPosition).sqrMagnitude > 0.003f * 0.003f ||
                 Mathf.Abs(Mathf.DeltaAngle(previousLocalYaw, subject.eulerAngles.y)) > 0.05f || Mathf.Abs(previousLocalPitch - pitch) > 0.05f;
@@ -407,6 +435,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
                 bool looked = Mathf.Abs(Mathf.DeltaAngle(anchorYaw, subject.eulerAngles.y)) > 0.35f || Mathf.Abs(anchorPitch - pitch) > 0.35f;
                 if (active || moved || looked)
                 {
+                    ShowDeathJumpscare();
                     offlineVictim.MarkDeadFromMonster();
                     DisappearOffline();
                 }

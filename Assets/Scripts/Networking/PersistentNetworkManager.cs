@@ -72,6 +72,14 @@ namespace Networking
             // when the host disappears. It does not report ServerClientId here.
             if (clientId == networkManager.LocalClientId)
             {
+                // The party manager owns roster/voice cleanup and serializes
+                // menu returns. Do not race it with a second scene load.
+                var party = GetComponent<RelayPartyManager>();
+                if (party != null)
+                {
+                    if (SceneManager.GetActiveScene().name != "MainMenu") party.ReturnToMainMenuAfterMatch();
+                    return;
+                }
                 networkManager.Shutdown();
                 StartCoroutine(ReturnToMenuAfterShutdown(networkManager));
             }
