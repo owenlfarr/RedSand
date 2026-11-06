@@ -41,6 +41,46 @@ public class PlayerController : NetworkBehaviour
     private NetworkPlayerMovementState movementState;
     private OxygenSystem oxygenSystem;
     private Vector3 velocity;
+    private Vector3 fallRecoveryPosition;
+    private Quaternion fallRecoveryRotation;
+    private float fallRecoveryHeight;
+
+    private void RecoverFromMapFall()
+    {
+        if (controller == null || (IsSpawned && !IsOwner)) return;
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening && !IsSpawned) return;
+        if (oxygenSystem != null && oxygenSystem.IsDead()) return;
+        if (transform.position.y >= fallRecoveryHeight) return;
+
+        bool controllerEnabled = controller.enabled;
+        controller.enabled = false;
+        transform.SetPositionAndRotation(fallRecoveryPosition, fallRecoveryRotation);
+        var networkTransform = GetComponent<Networking.OwnerNetworkTransform>();
+        if (IsSpawned && networkTransform != null)
+            networkTransform.Teleport(fallRecoveryPosition, fallRecoveryRotation, transform.localScale);
+        velocity = Vector3.zero;
+        landingImpactOffset = 0f;
+        controller.enabled = controllerEnabled;
+        Physics.SyncTransforms();
+    }
+
+    private void InitializeFallRecovery()
+    {
+        fallRecoveryPosition = transform.position;
+        fallRecoveryRotation = transform.rotation;
+        var points = FindObjectsOfType<Networking.NetworkStartPosition>();
+        System.Array.Sort(points, (a, b) => string.CompareOrdinal(a.name, b.name));
+        if (points.Length > 0)
+        {
+            var point = points[(int)(OwnerClientId % (ulong)points.Length)].transform;
+            fallRecoveryPosition = point.position;
+            fallRecoveryRotation = point.rotation;
+        }
+        float lowestGround = fallRecoveryPosition.y;
+        foreach (var terrain in Terrain.activeTerrains)
+            lowestGround = Mathf.Min(lowestGround, terrain.transform.position.y);
+        fallRecoveryHeight = lowestGround - 50f;
+    }
     private bool isGrounded;
     private bool wasGrounded;
     private float sprintEnergy;
@@ -61,6 +101,7 @@ public class PlayerController : NetworkBehaviour
         controller = GetComponent<CharacterController>();
         movementState = GetComponent<NetworkPlayerMovementState>();
         oxygenSystem = GetComponent<OxygenSystem>();
+        InitializeFallRecovery();
         mouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat("MouseSensitivity", mouseSensitivity), 0.25f, 8f);
         sprintEnergy = maxSprintDuration;
         canSprint = true;
@@ -119,6 +160,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        RecoverFromMapFall();
         if (PlayerSettingsUI.IsGameMenuOpen && movementState != null && IsSpawned && IsOwner)
         {
             movementState.MoveInput.Value = Vector2.zero;

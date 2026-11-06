@@ -805,6 +805,7 @@ GameObject:
   m_Component:
   - component: {fileID: 48674435}
   - component: {fileID: 48674434}
+  - component: {fileID: 48674436}
   m_Layer: 0
   m_Name: BunkerEndingSequence
   m_TagString: Untagged
@@ -824,6 +825,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 187e936701d01d440b486ff1a51a506f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   nextSceneName: MainMenu
   bunkerEndingPosition: {fileID: 206608526}
   lightRoots:
@@ -843,6 +845,10 @@ MonoBehaviour:
   - I survived till the day.
   - The radiation is too strong to go out in the day.
   - They will be back again tonight.
+  SequenceStartedNetwork:
+    m_InternalValue: 0
+  IsActiveNetwork:
+    m_InternalValue: 0
 --- !u!4 &48674435
 Transform:
   m_ObjectHideFlags: 0
@@ -859,6 +865,31 @@ Transform:
   - {fileID: 206608526}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &48674436
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 48674433}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 2940974747
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!23 &51277910
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1831,6 +1862,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -4819223349682164798, guid: 37a349ca978250545abcc5a5709539b5, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1990862234}
+    - targetCorrespondingSourceObject: {fileID: -4819223349682164798, guid: 37a349ca978250545abcc5a5709539b5, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1990862235}
   m_SourcePrefab: {fileID: 100100000, guid: 37a349ca978250545abcc5a5709539b5, type: 3}
 --- !u!1 &143778888
 GameObject:
@@ -4408,6 +4442,63 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.051217854, y: 2.9831276, z: 1.5635794}
   m_Center: {x: 0.014188381, y: 1.5089006, z: 0.7704095}
+--- !u!1001 &286914757
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 4798100559000476557, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_Name
+      value: MarsTerrainCrag (3)
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1627
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 65
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1464
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
 --- !u!1 &288178161
 GameObject:
   m_ObjectHideFlags: 0
@@ -4877,6 +4968,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 12898adce67fb91488ec6156b121f7e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   detectionRadius: 50
   roamSpeed: 12
   chaseSpeed: 16
@@ -4906,9 +4998,30 @@ MonoBehaviour:
     m_Bits: 4294967295
   maxTiltAngle: 30
   bodyTransform: {fileID: 0}
+  maxVisibleDistance: 0
   zombieJumpscareImage: {fileID: 2800000, guid: 83816b6fbd2ea024cadb3a9c0fce590a, type: 3}
   zombieJumpscareSound: {fileID: 8300000, guid: 55beef11e6cbfb24ba9d1c0d65b4acb4, type: 3}
   jumpscareDisplayTime: 2
+  PositionNetwork:
+    m_InternalValue: {x: 0, y: 0, z: 0}
+  RotationNetwork:
+    m_InternalValue: {x: 0, y: 0, z: 0}
+  StateNetwork:
+    m_InternalValue: 0
+  IsStalkingNetwork:
+    m_InternalValue: 0
+  IsChasingNetwork:
+    m_InternalValue: 0
+  CanSeePlayerNetwork:
+    m_InternalValue: 0
+  CurrentDestinationNetwork:
+    m_InternalValue: {x: 0, y: 0, z: 0}
+  IsNeutralizedNetwork:
+    m_InternalValue: 0
+  SearchBehaviorAmountNetwork:
+    m_InternalValue: 0
+  FocusedSearchAmountNetwork:
+    m_InternalValue: 0
 --- !u!143 &299403215
 CharacterController:
   m_ObjectHideFlags: 0
@@ -4934,6 +5047,31 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0.7, z: 0.1}
+--- !u!114 &299403216
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 299403211}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 425446094
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &328454290
 GameObject:
   m_ObjectHideFlags: 0
@@ -11071,6 +11209,63 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 4300000, guid: c7f0be1a7661a448388e936acefcd607, type: 3}
+--- !u!1001 &492667621
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 4798100559000476557, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_Name
+      value: MarsTerrainCrag (2)
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1720.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.3
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1123.9
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
 --- !u!65 &503510218
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -12344,6 +12539,63 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 554458271}
   m_Mesh: {fileID: 4300000, guid: 8386fa60b76534bc0856f1d023537484, type: 3}
+--- !u!1001 &558224894
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 4798100559000476557, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_Name
+      value: MarsTerrainCrag (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2103.7
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 25.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1108.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
 --- !u!65 &559522058
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -12510,6 +12762,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4571eefad54cac846889a4efda089420, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   checkInterval: 120
   flareChance: 0.1
   flareColor: {r: 1, g: 0.5, b: 0, a: 1}
@@ -12544,6 +12797,12 @@ MonoBehaviour:
   warningSound: {fileID: 8300000, guid: b7e0f99509315734b9f362677a09df1d, type: 3}
   repairCompleteSound: {fileID: 0}
   bangVolume: 1
+  IsFlareActiveNetwork:
+    m_InternalValue: 0
+  IsRepairingNetwork:
+    m_InternalValue: 0
+  RepairProgressNetwork:
+    m_InternalValue: 0
 --- !u!4 &583701770
 Transform:
   m_ObjectHideFlags: 0
@@ -13805,6 +14064,63 @@ MeshCollider:
   m_Convex: 0
   m_CookingOptions: 30
   m_Mesh: {fileID: 4300000, guid: 318fc5659f68549feb9d55d15a12de2a, type: 3}
+--- !u!1001 &622041421
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 4798100559000476557, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_Name
+      value: MarsTerrainCrag
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2211.1216
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 74.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1274.19
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7764547253878054613, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 5589ae9e8e33b224895d142af7fe9a0d, type: 3}
 --- !u!33 &625837671
 MeshFilter:
   m_ObjectHideFlags: 0
@@ -20959,6 +21275,7 @@ GameObject:
   - component: {fileID: 796680695}
   - component: {fileID: 796680694}
   - component: {fileID: 796680693}
+  - component: {fileID: 796680698}
   m_Layer: 0
   m_Name: Cube
   m_TagString: Untagged
@@ -21006,6 +21323,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1a99fd0cb319c1e44a1f154bb17ba26a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   defenseName: Defense
   objectiveTransform: {fileID: 1583080139}
   interactionDistance: 3
@@ -21024,6 +21342,10 @@ MonoBehaviour:
   cooldownText: {fileID: 1494830345}
   activationSound: {fileID: 8300000, guid: dbafd370c31ef12428e13299697ee868, type: 3}
   cooldownSound: {fileID: 0}
+  LastActivationTimeNetwork:
+    m_InternalValue: -999
+  IsOnCooldownNetwork:
+    m_InternalValue: 0
 --- !u!65 &796680695
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -21098,6 +21420,31 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 796680691}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &796680698
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796680691}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 3704981435
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!23 &801390786
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -21155,6 +21502,7 @@ GameObject:
   - component: {fileID: 801880035}
   - component: {fileID: 801880034}
   - component: {fileID: 801880033}
+  - component: {fileID: 801880036}
   m_Layer: 0
   m_Name: radar
   m_TagString: Untagged
@@ -21187,6 +21535,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6cc1b809e06f64a489200ba061ea3f97, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   objectiveTransform: {fileID: 1583080139}
   interactionDistance: 3
   cooldownTime: 30
@@ -21197,6 +21546,10 @@ MonoBehaviour:
   cooldownText: {fileID: 1666743660}
   radarScanSound: {fileID: 8300000, guid: 4b386a526896bdf47a127903a46381da, type: 3}
   cooldownSound: {fileID: 0}
+  LastScanTimeNetwork:
+    m_InternalValue: -999
+  IsOnCooldownNetwork:
+    m_InternalValue: 0
 --- !u!4 &801880035
 Transform:
   m_ObjectHideFlags: 0
@@ -21212,6 +21565,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &801880036
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 801880032}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 2838907538
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!64 &801901114
 MeshCollider:
   m_ObjectHideFlags: 0
@@ -29853,6 +30231,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 51e8328544eb2574d99347771b48b5b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   walkSpeed: 5
   sprintSpeed: 10
   gravity: -9.81
@@ -29914,6 +30293,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fffe004711c33d84bb6d461ce865d1c9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   maxOxygen: 100
   surfaceDepletionTime: 180
   bunkerRechargeTime: 60
@@ -29925,6 +30305,8 @@ MonoBehaviour:
   lowOxygenWarning: {fileID: 8300000, guid: afc87ea8d51304c42abc41f4e02dddb1, type: 3}
   deathSound: {fileID: 8300000, guid: 40c5cbc8cc672ab4eb7881be5a7502a6, type: 3}
   enterSurfaceSound: {fileID: 8300000, guid: ed1e4d387aebce648bb581382a45ac04, type: 3}
+  IsFlashlightEnabledNetwork:
+    m_InternalValue: 0
 --- !u!114 &1189548248
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -37144,6 +37526,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1470513531}
   - component: {fileID: 1470513530}
+  - component: {fileID: 1470513532}
   m_Layer: 0
   m_Name: Large Object
   m_TagString: Untagged
@@ -37163,6 +37546,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6ce625e8cc8bd2a43befa056a9f42aea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   objectiveTransform: {fileID: 825186135}
   startingDistance: 600
   killDistance: 5
@@ -37177,6 +37561,12 @@ MonoBehaviour:
   killSound: {fileID: 8300000, guid: 55beef11e6cbfb24ba9d1c0d65b4acb4, type: 3}
   surveyorJumpscareImage: {fileID: 0}
   deathMessage: IT WAS WATCHING
+  CurrentDistanceNetwork:
+    m_InternalValue: 0
+  IsRetreatingNetwork:
+    m_InternalValue: 0
+  TimeSinceLastRadarCheckNetwork:
+    m_InternalValue: 0
 --- !u!4 &1470513531
 Transform:
   m_ObjectHideFlags: 0
@@ -37192,6 +37582,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1470513532
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1470513529}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 576416029
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &1480492294
 GameObject:
   m_ObjectHideFlags: 0
@@ -37654,6 +38069,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e98f09db973da6449220fb841ceab5b, type: 3}
       insertIndex: -1
       addedObject: {fileID: 299403214}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1e98f09db973da6449220fb841ceab5b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 299403216}
   m_SourcePrefab: {fileID: 100100000, guid: 1e98f09db973da6449220fb841ceab5b, type: 3}
 --- !u!23 &1488277097
 MeshRenderer:
@@ -38564,12 +38982,12 @@ Terrain:
   m_Enabled: 1
   serializedVersion: 6
   m_TerrainData: {fileID: 15600000, guid: c90d833dd483629469f13b6ad000be3c, type: 2}
-  m_TreeDistance: 5000
-  m_TreeBillboardDistance: 50
-  m_TreeCrossFadeLength: 5
+  m_TreeDistance: 181
+  m_TreeBillboardDistance: 2000
+  m_TreeCrossFadeLength: 9
   m_TreeMaximumFullLODCount: 50
   m_DetailObjectDistance: 80
-  m_DetailObjectDensity: 1
+  m_DetailObjectDensity: 0.052
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
   m_HeightmapMinimumLODSimplification: 0
@@ -45669,6 +46087,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1819031912}
   - component: {fileID: 1819031911}
+  - component: {fileID: 1819031913}
   m_Layer: 0
   m_Name: RushMonsterSystem
   m_TagString: Untagged
@@ -45688,6 +46107,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bbee0db592b6bea4d9b272065870e21c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   eventChance: 0.2
   checkInterval: 45
   flickerDuration: 5
@@ -45715,6 +46135,10 @@ MonoBehaviour:
   rushDeathMessage: Orange Sand
   blackScreenDuration: 6
   imageDisplayDuration: 6
+  IsEventActiveNetwork:
+    m_InternalValue: 0
+  IsRushPassingNetwork:
+    m_InternalValue: 0
 --- !u!4 &1819031912
 Transform:
   m_ObjectHideFlags: 0
@@ -45730,6 +46154,31 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1819031913
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1819031910}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 2053888194
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!4 &1819425225
 Transform:
   m_ObjectHideFlags: 0
@@ -48297,6 +48746,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba41a8d4e3fd015438fcbde600e45b5b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   outageCheckInterval: 60
   outageChance: 0.16
   maxConsecutiveSafeChecks: 4
@@ -48328,6 +48778,10 @@ MonoBehaviour:
   interactionPromptText: {fileID: 1356315337}
   powerOutSound: {fileID: 8300000, guid: 097a5efe21ad95c4396b71b48a253c8f, type: 3}
   powerRestoreSound: {fileID: 8300000, guid: 63d9fe6d0495e8142a6dbe4d7b8dd671, type: 3}
+  IsPowerOutNetwork:
+    m_InternalValue: 0
+  NextOutageCheckTimeNetwork:
+    m_InternalValue: 0
 --- !u!4 &1959246785
 Transform:
   m_ObjectHideFlags: 0
@@ -48915,12 +49369,50 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 669179116ad5e0b4896ec723d8c7ecc1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   lockerCameraTransform: {fileID: 356498695}
   interactionDistance: 6
   hideFOV: 45
   interactionPromptText: {fileID: 0}
   doorCloseSound: {fileID: 0}
   doorOpenSound: {fileID: 0}
+  HiddenClientIdNetwork:
+    m_InternalValue: 18446744073709551615
+  DoorOpenNetwork:
+    m_InternalValue: 1
+  Locker0HiddenClientId:
+    m_InternalValue: 18446744073709551615
+  Locker1HiddenClientId:
+    m_InternalValue: 18446744073709551615
+  Locker2HiddenClientId:
+    m_InternalValue: 18446744073709551615
+  Locker3HiddenClientId:
+    m_InternalValue: 18446744073709551615
+--- !u!114 &1990862235
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1990862230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  GlobalObjectIdHash: 1734795568
+  InScenePlacedSourceGlobalObjectIdHash: 0
+  DeferredDespawnTick: 0
+  Ownership: 1
+  AlwaysReplicateAsRoot: 0
+  SynchronizeTransform: 1
+  ActiveSceneSynchronization: 0
+  SceneMigrationSynchronization: 0
+  SpawnWithObservers: 1
+  DontDestroyWithOwner: 0
+  AutoObjectParentSync: 1
+  SyncOwnerTransformWhenParented: 1
+  AllowOwnerToParent: 0
 --- !u!1 &1992713748
 GameObject:
   m_ObjectHideFlags: 0
@@ -50274,6 +50766,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 04902c867d471634baaf2f21d48da62c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
   secondsPerHour: 90
   startHour: 22
   endHour: 8
@@ -50281,6 +50774,16 @@ MonoBehaviour:
   endingSequenceTriggerTime: 900
   nextSceneName: MainMenu
   difficultyIncreasePerHour: 0.02
+  CurrentHourNetwork:
+    m_InternalValue: 0
+  CurrentMinuteNetwork:
+    m_InternalValue: 0
+  TotalElapsedTimeNetwork:
+    m_InternalValue: 0
+  NightProgressNetwork:
+    m_InternalValue: 0
+  EndingTriggeredNetwork:
+    m_InternalValue: 0
 --- !u!4 &2064945791
 Transform:
   m_ObjectHideFlags: 0
@@ -57228,20 +57731,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 23441f6e15510bf498a6400738267bee, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  minSpawnDistance: 10
-  maxSpawnDistance: 15
-  minSpawnInterval: 200
-  maxSpawnInterval: 400
-  presenceDuration: 15
-  maxLookTime: 2
-  detectionAngle: 40
-  maxViewDistance: 17
-  appearSound: {fileID: 0}
-  lookingSound: {fileID: 0}
-  killSound: {fileID: 0}
-  leaveSound: {fileID: 0}
-  ignoreDeathImage: {fileID: 0}
-  deathMessage: YOU LOOKED
   fakeRadarDistance: 75
 --- !u!1 &8077896318183431973
 GameObject:
@@ -57966,3 +58455,7 @@ SceneRoots:
   - {fileID: 579403973}
   - {fileID: 1154066495}
   - {fileID: 48674435}
+  - {fileID: 622041421}
+  - {fileID: 558224894}
+  - {fileID: 492667621}
+  - {fileID: 286914757}

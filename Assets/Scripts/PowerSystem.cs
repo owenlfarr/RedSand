@@ -48,6 +48,7 @@ public class PowerSystem : NetworkBehaviour
     private bool isPlayerNearPowerBox = false;
     private AudioSource audioSource;
     private int consecutiveSafeChecks;
+    private bool skipNextOutageCheck;
 
     public NetworkVariable<bool> IsPowerOutNetwork = new NetworkVariable<bool>(
         false,
@@ -93,7 +94,7 @@ public class PowerSystem : NetworkBehaviour
 
         nextOutageCheckTime = Time.time + outageCheckInterval;
         
-        SetPowerState(true);
+        ApplyCurrentPowerState();
 
         if (interactionPromptText != null)
         {
@@ -105,6 +106,7 @@ public class PowerSystem : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        IsPowerOutNetwork.OnValueChanged += OnPowerOutNetworkChanged;
         if (IsServer)
         {
             isPowerOut = false;
@@ -118,6 +120,20 @@ public class PowerSystem : NetworkBehaviour
         {
             SyncLocalStateFromNetwork();
         }
+        ApplyCurrentPowerState();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        IsPowerOutNetwork.OnValueChanged -= OnPowerOutNetworkChanged;
+    }
+
+    private void OnPowerOutNetworkChanged(bool previousValue, bool currentValue)
+    {
+        isPowerOut = currentValue;
+        ApplyCurrentPowerState();
+        if (!currentValue) HidePowerBoxPrompt();
+        UpdatePowerStatusUI();
     }
 
     void Update()
@@ -184,6 +200,12 @@ public class PowerSystem : NetworkBehaviour
         }
 
         if (isPowerOut || IsSolarFlareActive()) return;
+
+        if (skipNextOutageCheck)
+        {
+            skipNextOutageCheck = false;
+            return;
+        }
 
         float randomValue = Random.value;
         consecutiveSafeChecks++;
@@ -289,9 +311,12 @@ public class PowerSystem : NetworkBehaviour
         if (!isPowerOut) return;
 
         isPowerOut = false;
+        skipNextOutageCheck = true;
+        nextOutageCheckTime = Time.time + Mathf.Max(1f, outageCheckInterval);
         if (IsNetworkSessionActive())
         {
             IsPowerOutNetwork.Value = false;
+            NextOutageCheckTimeNetwork.Value = nextOutageCheckTime;
             if (NetworkGameState.Instance != null)
             {
                 NetworkGameState.Instance.SetPowerOut(false);
@@ -338,7 +363,7 @@ public class PowerSystem : NetworkBehaviour
 
     public void ApplyCurrentPowerState()
     {
-        SetPowerState(!IsPowerOut);
+        SetPowerState(!IsPowerOut && !IsSolarFlareActive());
     }
 
     void ResetAllSystemCooldowns()
@@ -443,7 +468,13 @@ public class PowerSystem : NetworkBehaviour
             return;
         }
 
+        bool stateChanged = isPowerOut != IsPowerOutNetwork.Value;
         isPowerOut = IsPowerOutNetwork.Value;
+        if (stateChanged)
+        {
+            ApplyCurrentPowerState();
+            if (!isPowerOut) HidePowerBoxPrompt();
+        }
         nextOutageCheckTime = NextOutageCheckTimeNetwork.Value;
     }
 

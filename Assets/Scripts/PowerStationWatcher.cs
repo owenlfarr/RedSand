@@ -39,6 +39,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
     public Vector3 PatrolDestination => destination;
 
     CharacterController motor;
+    readonly TerrainRockRoute rockRoute = new TerrainRockRoute();
     Vector3 home, destination, anchor;
     float anchorYaw, anchorPitch, destinationUntil, verticalSpeed, stuckTime;
     double lastActivityReport;
@@ -472,6 +473,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
         delta.y = 0f;
         if (delta.magnitude < 1.2f || Time.time >= destinationUntil) PickDestination();
         Vector3 direction = Vector3.ProjectOnPlane(destination - transform.position, Vector3.up).normalized;
+        direction = rockRoute.Direction(motor, destination, direction);
         Vector3 previous = transform.position;
         verticalSpeed = motor.isGrounded ? -2f : Mathf.Max(-20f, verticalSpeed - 20f * Time.deltaTime);
         motor.Move((direction * roamSpeed + Vector3.up * verticalSpeed) * Time.deltaTime);

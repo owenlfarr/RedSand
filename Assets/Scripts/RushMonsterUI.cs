@@ -75,7 +75,7 @@ public class RushMonsterUI : MonoBehaviour
         textRect.sizeDelta = Vector2.zero;
 
         warningText = textObj.AddComponent<TextMeshProUGUI>();
-        warningText.text = "something is coming...";
+        warningText.text = "";
         warningText.fontSize = 18;
         warningText.alignment = TextAlignmentOptions.Center;
         warningText.color = Color.white;
@@ -163,11 +163,8 @@ public class RushMonsterUI : MonoBehaviour
 
     public void ShowWarning(string message)
     {
-        if (warningPanel != null && warningText != null)
-        {
-            warningText.text = message;
-            warningPanel.SetActive(true);
-        }
+        // Flicker and sound provide the warning without narrative text.
+        HideWarning();
     }
 
     public void HideWarning()

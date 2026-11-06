@@ -80,6 +80,7 @@ public class RushMonsterEvent : NetworkBehaviour
     private Transform playerTransform;
     private OxygenSystem oxygenSystem;
     private AudioSource audioSource;
+    private AudioSource flickerAudioSource;
     private float nextCheckTime;
     private bool[] originalWhiteLightStates;
     private bool[] originalRedLightStates;
@@ -104,6 +105,10 @@ public class RushMonsterEvent : NetworkBehaviour
         audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.playOnAwake = false;
         audioSource.spatialBlend = 0f;
+        flickerAudioSource = gameObject.AddComponent<AudioSource>();
+        flickerAudioSource.playOnAwake = false;
+        flickerAudioSource.spatialBlend = 0f;
+        flickerAudioSource.volume = 0.3f;
     }
 
     void Start()
@@ -321,7 +326,8 @@ public class RushMonsterEvent : NetworkBehaviour
 
         if (IsLocalPlayerInBunker() && rushApproachingSound != null)
         {
-            audioSource.PlayOneShot(rushApproachingSound);
+            audioSource.clip = rushApproachingSound;
+            audioSource.Play();
         }
 
         if (IsLocalPlayerInBunker() && rushUI != null)
@@ -349,7 +355,8 @@ public class RushMonsterEvent : NetworkBehaviour
         {
             if (rushPassSound != null)
             {
-                audioSource.PlayOneShot(rushPassSound);
+                audioSource.clip = rushPassSound;
+                audioSource.Play();
             }
 
             if (rushUI != null)
@@ -444,7 +451,8 @@ public class RushMonsterEvent : NetworkBehaviour
 
         if (rushApproachingSound != null)
         {
-            audioSource.PlayOneShot(rushApproachingSound);
+            audioSource.clip = rushApproachingSound;
+            audioSource.Play();
         }
 
         if (rushUI != null)
@@ -474,7 +482,8 @@ public class RushMonsterEvent : NetworkBehaviour
 
         if (rushPassSound != null)
         {
-            audioSource.PlayOneShot(rushPassSound);
+            audioSource.clip = rushPassSound;
+            audioSource.Play();
         }
 
         if (rushUI != null)
@@ -576,9 +585,10 @@ public class RushMonsterEvent : NetworkBehaviour
                 }
             }
 
-            if (flickerSound != null && Random.value > 0.6f)
+            if (flickerSound != null && !flickerAudioSource.isPlaying && Random.value > 0.6f)
             {
-                audioSource.PlayOneShot(flickerSound, 0.3f);
+                flickerAudioSource.clip = flickerSound;
+                flickerAudioSource.Play();
             }
 
             yield return new WaitForSeconds(Random.Range(0.05f, 0.15f));

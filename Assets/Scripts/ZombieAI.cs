@@ -168,6 +168,7 @@ public class ZombieAI : NetworkBehaviour
         NetworkVariableWritePermission.Server);
 
     private CharacterController controller;
+    private readonly TerrainRockRoute rockRoute = new TerrainRockRoute();
     private Transform playerTransform;
     private Vector3 currentDestination;
     private Vector3 currentMoveDirection;
@@ -575,6 +576,7 @@ public class ZombieAI : NetworkBehaviour
 
         if (controller != null && controller.enabled)
         {
+            currentMoveDirection = rockRoute.Direction(controller, playerTransform.position, currentMoveDirection);
             controller.Move(currentMoveDirection * chaseSpeed * Time.deltaTime);
         }
 
@@ -620,7 +622,8 @@ public class ZombieAI : NetworkBehaviour
         currentMoveDirection = transform.forward;
         if (controller != null && controller.enabled)
         {
-            controller.Move(transform.forward * stalkSpeed * Time.deltaTime);
+            currentMoveDirection = rockRoute.Direction(controller, orbitPoint, currentMoveDirection);
+            controller.Move(currentMoveDirection * stalkSpeed * Time.deltaTime);
         }
     }
 
@@ -663,6 +666,7 @@ public class ZombieAI : NetworkBehaviour
 
         if (controller != null && controller.enabled)
         {
+            currentMoveDirection = rockRoute.Direction(controller, currentDestination, currentMoveDirection);
             controller.Move(currentMoveDirection * roamSpeed * Time.deltaTime);
         }
 

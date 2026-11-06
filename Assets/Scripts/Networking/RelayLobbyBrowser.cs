@@ -16,7 +16,7 @@ namespace Networking
         RelayPartyManager owner;
         ILobbyDirectoryBackend backend;
         LobbyAdvertisement advertisement;
-        GameObject canvasObject, backdrop, dialog, browseButtonObject, rowsRoot, hostStatusObject;
+        GameObject canvasObject, backdrop, dialog, browseButtonObject, rowsRoot, hostStatusObject, loadingPanel;
         TMP_Text notice, hostStatus, visibilityDescription;
         Button publicButton, privateButton, refreshButton, createButton;
         readonly List<Button> rowButtons = new List<Button>();
@@ -203,6 +203,8 @@ namespace Networking
             notice.color = Muted;
             refreshButton = Button(dialog.transform, "REFRESH", new Vector2(330f, -299f), new Vector2(212f, 50f), () => _ = Refresh());
             refreshButton.GetComponent<Image>().color = Selected;
+            loadingPanel = Panel(dialog.transform, "Connecting to lobby services", new Vector2(880f, 440f), new Vector2(0f, -20f));
+            Text(loadingPanel.transform, "CONNECTING...\nLoading public servers", 28f, Vector2.zero, new Vector2(800f, 150f));
             nextRefresh = 0f;
             _ = Refresh();
         }
@@ -233,7 +235,11 @@ namespace Networking
                 }
                 Debug.LogWarning("[Lobby Browser] Query failed: " + exception.Message);
             }
-            finally { querying = false; }
+            finally
+            {
+                querying = false;
+                if (ticket == viewVersion && loadingPanel != null) loadingPanel.SetActive(false);
+            }
         }
 
         public async Task JoinListed(string id)
@@ -294,6 +300,7 @@ namespace Networking
             if (backdrop != null) backdrop.SetActive(false);
             if (dialog != null) { dialog.SetActive(false); Destroy(dialog); }
             dialog = null;
+            loadingPanel = null;
             notice = null;
             refreshButton = null;
             createButton = null;

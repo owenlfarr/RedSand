@@ -254,6 +254,8 @@ public class SolarFlareSystem : NetworkBehaviour
 
         SyncLocalStateFromNetwork();
         SyncRepairCompassWithFlareState();
+        if (isFlareActive) DisableAllSystems();
+        else RestoreBunkerLightsForCurrentPowerState();
     }
 
     public override void OnNetworkDespawn()
@@ -423,6 +425,9 @@ public class SolarFlareSystem : NetworkBehaviour
         }
 
         StartCoroutine(RestoreSkyColor());
+
+        // Repair may finish before this delayed presentation sequence.
+        if (!IsFlareActive) yield break;
 
         DisableAllSystems();
 
@@ -1068,6 +1073,10 @@ public class SolarFlareSystem : NetworkBehaviour
             hasLocalRepairRequest = false;
             isPlayerNearFixPoint = false;
             UpdateRepairUIFromState();
+            RestoreBunkerLightsForCurrentPowerState();
+            if (warningText != null) warningText.gameObject.SetActive(false);
+            if (interactionPromptText != null) interactionPromptText.gameObject.SetActive(false);
+            if (repairProgressBar != null) repairProgressBar.gameObject.SetActive(false);
         }
     }
 

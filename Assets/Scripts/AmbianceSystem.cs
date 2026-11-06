@@ -38,6 +38,36 @@ public class AmbianceSystem : MonoBehaviour
     private Coroutine crossfadeCoroutine;
     private bool audioInitialized;
 
+    private static AmbianceSystem activeInstance;
+
+    void Awake()
+    {
+        if (activeInstance != null && activeInstance != this && activeInstance.gameObject.scene == gameObject.scene)
+        {
+            enabled = false;
+            return;
+        }
+        activeInstance = this;
+    }
+
+    void OnEnable()
+    {
+        if (bunkerAudioSource != null && bunkerAmbiance != null) bunkerAudioSource.Play();
+        if (surfaceAudioSource != null && surfaceAmbiance != null) surfaceAudioSource.Play();
+    }
+
+    void OnDisable()
+    {
+        if (crossfadeCoroutine != null) StopCoroutine(crossfadeCoroutine);
+        if (bunkerAudioSource != null) bunkerAudioSource.Stop();
+        if (surfaceAudioSource != null) surfaceAudioSource.Stop();
+    }
+
+    void OnDestroy()
+    {
+        if (activeInstance == this) activeInstance = null;
+    }
+
     void Start()
     {
         bunkerAudioSource = gameObject.AddComponent<AudioSource>();
