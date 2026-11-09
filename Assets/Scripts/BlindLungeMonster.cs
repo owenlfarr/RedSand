@@ -13,8 +13,6 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     public NetworkVariable<Vector3> Position=new NetworkVariable<Vector3>();
     public NetworkVariable<float> Yaw=new NetworkVariable<float>();
     public NetworkVariable<int> State=new NetworkVariable<int>();
-    public NetworkVariable<ulong> CollectedRockMask=new NetworkVariable<ulong>();
-    ulong offlineCollectedRockMask;
     CharacterController motor;
     AudioSource heartbeat;
     AudioClip beat,impact;
@@ -28,6 +26,8 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     public const float SearchDuration=1f, SearchCooldown=2.5f;
     public static bool SearchSucceeds(float roll)=>roll>=0&&roll<.1f;
     readonly Dictionary<ulong,float> nextSearch=new Dictionary<ulong,float>();
+    sealed class GroundSearch {public float lastHold;public Vector3 aim;}
+    readonly Dictionary<ulong,GroundSearch> groundSearches=new Dictionary<ulong,GroundSearch>();
     readonly Dictionary<ulong,float> nextVoice=new Dictionary<ulong,float>();
     readonly List<Flight> flights=new List<Flight>();
     readonly Dictionary<int,DistractionRockVisual> rockVisuals=new Dictionary<int,DistractionRockVisual>();
@@ -69,10 +69,10 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         var target=new ClientRpcParams{Send=new ClientRpcSendParams{TargetClientIds=new[]{id}}};
         foreach(var flight in flights)SpawnRockClientRpc(flight.id,flight.origin,flight.velocity,flight.start,target);
     }
-    void ForgetPlayer(ulong id){lastPositions.Remove(id);footsteps.Remove(id);grounded.Remove(id);nextSearch.Remove(id);nextVoice.Remove(id);}
+    void ForgetPlayer(ulong id){lastPositions.Remove(id);footsteps.Remove(id);grounded.Remove(id);nextSearch.Remove(id);nextVoice.Remove(id);groundSearches.Remove(id);}
     public override void OnNetworkDespawn(){
         if(NetworkManager!=null){if(NetworkManager.SceneManager!=null)NetworkManager.SceneManager.OnSynchronizeComplete-=SynchronizeRocks;NetworkManager.OnClientDisconnectCallback-=ForgetPlayer;}
-        motor.enabled=false;heartbeat.Stop();flights.Clear();
+        motor.enabled=false;heartbeat.Stop();flights.Clear();groundSearches.Clear();
         foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);rockVisuals.Clear();
     }
     void Update(){
@@ -158,20 +158,9 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         }
         return nearest.HasValue&&nearest.Value.normal.y>.45f&&Vector3.Distance(nearest.Value.point,feet)<=3&&nearest.Value.collider.GetComponentInParent<PlayerController>()==null;
     }
-    public bool IsPickupAvailable(int id)=>id>=0&&id<64&&(!Online||IsSpawned)&&((Online?CollectedRockMask.Value:offlineCollectedRockMask)&(1UL<<id))==0;
-    public void RequestPickup(PlayerController player,int id){if(Online){if(IsSpawned)PickupRockServerRpc(id);}else CollectPickup(player,id);}
-    [ServerRpc(RequireOwnership=false)]void PickupRockServerRpc(int id,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var player))CollectPickup(player,id);}
-    void CollectPickup(PlayerController player,int id){
-        if(!Authority||player==null||!IsPickupAvailable(id)||Count(player)>0)return;
-        SmallRockPickup pickup=null;
-        foreach(var candidate in FindObjectsByType<SmallRockPickup>(FindObjectsSortMode.None))
-            if(candidate.gameObject.scene==gameObject.scene&&candidate.pickupId==id){pickup=candidate;break;}
-        if(pickup==null||!pickup.CanReach(player))return;
-        SetCount(player,1);
-        if(Online)CollectedRockMask.Value|=1UL<<id;else offlineCollectedRockMask|=1UL<<id;
-    }
-    public void RequestSearch(PlayerController player,Vector3 aim){if(Online)SearchRockServerRpc(aim);else BeginSearch(0,player,aim);}
-    [ServerRpc(RequireOwnership=false)]void SearchRockServerRpc(Vector3 aim,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var p))BeginSearch(rpc.Receive.SenderClientId,p,aim);}
+    public void RequestSearch(PlayerController player,Vector3 aim){if(Online){if(IsSpawned)SearchRockServerRpc(aim,true,true);}else BeginSearch(0,player,aim);}
+    public void UpdateSearchHold(PlayerController player,Vector3 aim,bool held){if(Online){if(IsSpawned)SearchRockServerRpc(aim,held,false);}else HoldSearch(0,player,aim,held);}
+    [ServerRpc(RequireOwnership=false)]void SearchRockServerRpc(Vector3 aim,bool held,bool begin,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var p)){if(begin)BeginSearch(rpc.Receive.SenderClientId,p,aim);else HoldSearch(rpc.Receive.SenderClientId,p,aim,held);}}
     int Count(PlayerController p){var state=p.GetComponent<NetworkPlayerMovementState>();return Online&&state!=null?state.CarriedDistractionRocks.Value:p.GetComponent<RockThrower>().OfflineCount;}
     void SetCount(PlayerController p,int value){var state=p.GetComponent<NetworkPlayerMovementState>();if(Online&&state!=null)state.CarriedDistractionRocks.Value=value;else p.GetComponent<RockThrower>().OfflineCount=value;}
     void BeginSearch(ulong id,PlayerController player,Vector3 aim){
@@ -179,13 +168,26 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         if(nextSearch.TryGetValue(id,out float next)&&Time.time<next){RejectedSearchRequests++;SearchReply(id,player,3);return;}
         if(Count(player)>0){SearchReply(id,player,4);return;}
         if(!GroundInReach(player,aim)){SearchReply(id,player,2);return;}
-        nextSearch[id]=Time.time+SearchCooldown;StartCoroutine(Search(id,player));
+        nextSearch[id]=Time.time+SearchCooldown;var attempt=new GroundSearch{lastHold=Time.time,aim=aim};groundSearches[id]=attempt;StartCoroutine(Search(id,player,attempt));
     }
-    IEnumerator Search(ulong id,PlayerController player){
-        yield return new WaitForSeconds(SearchDuration);
-        if(player==null||Online&&!TryPlayer(id,out player))yield break;
-        var life=player.GetComponent<OxygenSystem>();if(life!=null&&life.IsDead())yield break;
-        if(Count(player)>0){SearchReply(id,player,4);yield break;}
+    void HoldSearch(ulong id,PlayerController player,Vector3 aim,bool held){
+        if(!groundSearches.TryGetValue(id,out var attempt))return;
+        if(!held||!GroundInReach(player,aim)){groundSearches.Remove(id);if(player!=null)SearchReply(id,player,5);return;}
+        attempt.lastHold=Time.time;attempt.aim=aim;
+    }
+    IEnumerator Search(ulong id,PlayerController player,GroundSearch attempt){
+        float ends=Time.time+SearchDuration;
+        while(true){
+            if(!groundSearches.TryGetValue(id,out var current)||!object.ReferenceEquals(current,attempt))yield break;
+            if(player==null||Online&&!TryPlayer(id,out player)){groundSearches.Remove(id);yield break;}
+            var life=player.GetComponent<OxygenSystem>();
+            if(Time.time-attempt.lastHold>.65f||life!=null&&life.IsDead()||!GroundInReach(player,attempt.aim)){
+                groundSearches.Remove(id);SearchReply(id,player,5);yield break;
+            }
+            if(Time.time>=ends)break;
+            yield return null;
+        }
+        groundSearches.Remove(id);
         bool found=SearchSucceeds(Random.value);if(found)SetCount(player,1);SearchReply(id,player,found?1:0);
     }
     void SearchReply(ulong id,PlayerController player,int result){if(Online)SearchReplyClientRpc(result,new ClientRpcParams{Send=new ClientRpcSendParams{TargetClientIds=new[]{id}}});else player.GetComponent<RockThrower>()?.ShowResult(result);}

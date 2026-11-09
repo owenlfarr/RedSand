@@ -21,7 +21,6 @@ using UnityEngine.SceneManagement;
   var prefab=PrefabUtility.SaveAsPrefabAsset(actor,"Assets/_Project/Tests/BlindNetworkPlayer.prefab");UnityEngine.Object.DestroyImmediate(actor);
   var root=new GameObject("NetworkManager");var transport=root.AddComponent<UnityTransport>();var manager=root.AddComponent<NetworkManager>();manager.NetworkConfig.NetworkTransport=transport;manager.NetworkConfig.PlayerPrefab=prefab;manager.NetworkConfig.ConnectionApproval=false;manager.NetworkConfig.EnableSceneManagement=true;manager.NetworkConfig.Prefabs.Add(new NetworkPrefab{Prefab=prefab});
   var monster=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/BlindLungeMonster.prefab"),test);monster.transform.position=Vector3.zero;
-  var smallRock=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(SmallRockPickupSetup.PrefabPath),test);smallRock.transform.position=new Vector3(80,.12f,1);smallRock.GetComponent<SmallRockPickup>().pickupId=0;
   new GameObject("Multiplayer checks",typeof(NetworkObject),typeof(BlindLungeNetworkTest));
   var clock=new GameObject("PA network clock",typeof(NetworkObject),typeof(NightTimeManager)).GetComponent<NightTimeManager>();clock.enabled=false;
   Directory.CreateDirectory("Assets/_Project/Tests/BlindPA");AssetDatabase.Refresh();

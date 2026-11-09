@@ -30,6 +30,7 @@ using TMPro;
    float distance=Vector3.ProjectOnPlane(monster.transform.position-start,Vector3.up).magnitude;Require(Mathf.Abs(distance-10)<.15f,"actual lunge did not stop at 10m: "+distance);
    Require(BlindLungeMonster.GroundInReach(player,Vector3.down),"player cannot search actual floor");
    monster.RequestSearch(player,Vector3.down);stageAt=Time.time;stage=2;
+  }else if(stage==2&&Time.time-stageAt<=1.3f){monster.UpdateSearchHold(player,Vector3.down,true);
   }else if(stage==2&&Time.time-stageAt>1.3f){
    var result=tool.GetComponentsInChildren<TMP_Text>().FirstOrDefaultText();Require(result,"server search callback did not reach result HUD");
    tool.OfflineCount=1;stageAt=Time.time;stage=3;
@@ -43,6 +44,6 @@ using TMPro;
   }else if(stage==4&&Time.time-stageAt>.5f){File.WriteAllText("Logs/BlindLungePlayResult.txt","PASS actual 10m lunge/recovery, ground search and delayed HUD result, visible 3D held-rock preview renders nonempty pixels, throw consumes one rock and spawns projectile. No scene settings were saved.");deadline=0;EditorApplication.isPlaying=false;}
 
  }catch(Exception e){File.WriteAllText("Logs/BlindLungePlayResult.txt","FAIL "+e);deadline=0;EditorApplication.isPlaying=false;}}
- static bool FirstOrDefaultText(this TMP_Text[] labels){foreach(var label in labels)if(label.text=="Found nothing"||label.text=="Found one small rock")return true;return false;}
+ static bool FirstOrDefaultText(this TMP_Text[] labels){foreach(var label in labels)if(label.text=="Nothing found"||label.text=="Found one small rock")return true;return false;}
 }
 #endif

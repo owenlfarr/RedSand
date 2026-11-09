@@ -11,7 +11,7 @@ public sealed class RockThrower:MonoBehaviour
     NetworkPlayerMovementState state;
     Canvas hud;TMP_Text message,hint;RawImage preview;
     GameObject previewRoot;Transform rock;Camera previewCamera;RenderTexture texture;Material material;
-    float nextSearch,searchStarted,messageUntil;bool searching;
+    float nextSearch,searchStarted,messageUntil,nextSearchHold;bool searching;
     bool Online=>NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening;
     bool Local=>!Online||player.IsSpawned&&player.IsOwner;
     public int Carried=>Online&&state!=null?state.CarriedDistractionRocks.Value:OfflineCount;
@@ -20,28 +20,30 @@ public sealed class RockThrower:MonoBehaviour
     void Update(){
         if(!Local)return;
         bool available=BlindLungeMonster.Instance!=null&&(!Online||BlindLungeMonster.Instance.IsSpawned)&&Living()&&player.enabled;
+        if(!available){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);return;}
         if(hud==null&&available)BuildHud();if(hud==null)return;
         hud.gameObject.SetActive(available&&!PlayerSettingsUI.IsGameMenuOpen);if(!available)return;
         if(previewRoot!=null)previewRoot.SetActive(Carried>0);
         preview.gameObject.SetActive(Carried>0);
         if(rock!=null)rock.Rotate(0,35*Time.unscaledDeltaTime,0);
         var view=player.playerCamera;if(view==null)return;
-        var pickup=SmallRockPickup.LookTarget(player);
         bool ground=BlindLungeMonster.GroundInReach(player,view.forward);
-        hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?"":pickup!=null?"[E] PICK UP SMALL ROCK":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"[E] SEARCH GROUND FOR A SMALL ROCK"):"";
+        hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?$"HOLD [E]  /  SEARCHING {Mathf.Clamp01((Time.time-searchStarted)/BlindLungeMonster.SearchDuration)*100:F0}%":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"HOLD [E] TO SEARCH GROUND"):"";
         float alpha=searching?1:Mathf.Clamp01((messageUntil-Time.unscaledTime)/.7f);message.alpha=alpha;
-        if(searching&&Time.time-searchStarted>4){searching=false;message.text="Search interrupted";messageUntil=Time.unscaledTime+2;}
-        if(PlayerSettingsUI.IsGameMenuOpen||Time.timeScale<=0||Cursor.lockState!=CursorLockMode.Locked)return;
-        if(Input.GetKeyDown(KeyCode.E)&&pickup!=null&&!searching&&Carried==0){
-            BlindLungeMonster.Instance.RequestPickup(player,pickup.pickupId);
+        if(searching&&Time.time-searchStarted>4)CancelSearch();
+        if(PlayerSettingsUI.IsGameMenuOpen||Time.timeScale<=0||Cursor.lockState!=CursorLockMode.Locked){CancelSearch();return;}
+        if(searching){
+            if(!Input.GetKey(KeyCode.E)||!ground)CancelSearch();
+            else if(Time.time>=nextSearchHold){nextSearchHold=Time.time+.12f;BlindLungeMonster.Instance.UpdateSearchHold(player,view.forward,true);}
         }
-        else if(Input.GetKeyDown(KeyCode.E)&&ground&&!searching&&Carried==0&&Time.time>=nextSearch){
-            nextSearch=Time.time+BlindLungeMonster.SearchCooldown;searchStarted=Time.time;searching=true;message.text="Searching...";message.alpha=1;
+        if(Input.GetKeyDown(KeyCode.E)&&ground&&!searching&&Carried==0&&Time.time>=nextSearch){
+            nextSearch=Time.time+BlindLungeMonster.SearchCooldown;nextSearchHold=Time.time+.12f;searchStarted=Time.time;searching=true;message.text="Searching...";message.alpha=1;
             BlindLungeMonster.Instance.RequestSearch(player,view.forward);
         }
         if(Input.GetMouseButtonDown(0)&&Carried>0&&!searching)BlindLungeMonster.Instance.RequestThrow(player,view.forward);
     }
-    public void ShowResult(int result){searching=false;messageUntil=Time.unscaledTime+2.5f;if(message==null)return;message.text=result==1?"Found one small rock":result==0?"Found nothing":result==2?"Look at nearby ground":result==3?"Wait before searching again":"Already holding a small rock";message.alpha=1;}
+    void CancelSearch(){if(!searching)return;searching=false;BlindLungeMonster.Instance?.UpdateSearchHold(player,Vector3.zero,false);ShowResult(5);}
+    public void ShowResult(int result){searching=false;messageUntil=Time.unscaledTime+2.5f;if(message==null)return;message.text=result==1?"Found one small rock":result==0?"Nothing found":result==2?"Look at nearby ground":result==3?"Wait before searching again":result==5?"Search interrupted":"Already holding a small rock";message.alpha=1;}
     void BuildHud(){
         var go=new GameObject("Small rock HUD",typeof(Canvas),typeof(CanvasScaler));hud=go.GetComponent<Canvas>();hud.renderMode=RenderMode.ScreenSpaceOverlay;hud.sortingOrder=35;go.transform.SetParent(transform,false);
         var scaler=go.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1920,1080);
@@ -58,6 +60,6 @@ public sealed class RockThrower:MonoBehaviour
         previewRoot.SetActive(false);
     }
     static TMP_Text Label(Transform parent,string name,Vector2 position,Vector2 size,float font){var go=new GameObject(name,typeof(RectTransform),typeof(TextMeshProUGUI));go.transform.SetParent(parent,false);var text=go.GetComponent<TextMeshProUGUI>();text.fontSize=font;text.raycastTarget=false;text.alignment=TextAlignmentOptions.Left;var rt=go.GetComponent<RectTransform>();rt.anchorMin=rt.anchorMax=Vector2.zero;rt.pivot=Vector2.zero;rt.anchoredPosition=position;rt.sizeDelta=size;return text;}
-    void OnDisable(){searching=false;if(hud!=null)hud.gameObject.SetActive(false);if(previewRoot!=null)previewRoot.SetActive(false);}
+    void OnDisable(){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);if(previewRoot!=null)previewRoot.SetActive(false);}
     void OnDestroy(){if(hud!=null)Destroy(hud.gameObject);if(previewRoot!=null)Destroy(previewRoot);if(texture!=null){texture.Release();Destroy(texture);}if(material!=null)Destroy(material);}
 }
