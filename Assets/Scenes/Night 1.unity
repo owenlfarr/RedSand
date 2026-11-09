@@ -50903,8 +50903,8 @@ MonoBehaviour:
   secondsPerHour: 90
   startHour: 22
   endHour: 8
-  useCustomEndingTime: 1
-  endingSequenceTriggerTime: 5
+  useCustomEndingTime: 0
+  endingSequenceTriggerTime: 900
   nextSceneName: Night 2
   difficultyIncreasePerHour: 0.02
   CurrentHourNetwork:
