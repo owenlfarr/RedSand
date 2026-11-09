@@ -6,7 +6,8 @@ using TMPro;
 // Local input and presentation only. The monster's host validates searches and throws.
 public sealed class RockThrower:MonoBehaviour
 {
-    public int OfflineCount {get;set;}
+    int offlineCount;
+    public int OfflineCount {get=>offlineCount;set=>offlineCount=Mathf.Clamp(value,0,1);}
     PlayerController player;
     NetworkPlayerMovementState state;
     Canvas hud;TMP_Text message,hint;RawImage preview;
@@ -28,7 +29,7 @@ public sealed class RockThrower:MonoBehaviour
         if(rock!=null)rock.Rotate(0,35*Time.unscaledDeltaTime,0);
         var view=player.playerCamera;if(view==null)return;
         bool ground=BlindLungeMonster.GroundInReach(player,view.forward);
-        hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?$"HOLD [E]  /  SEARCHING {Mathf.Clamp01((Time.time-searchStarted)/BlindLungeMonster.SearchDuration)*100:F0}%":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"HOLD [E] TO SEARCH GROUND"):"";
+        hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?$"HOLD [E]  /  SEARCHING {Mathf.Clamp01((Time.time-searchStarted)/BlindLungeMonster.SearchDuration)*100:F0}%":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"HOLD [E] TO SEARCH GROUND"):view.forward.y<-.2f?"SEARCH ONLY ON PLANET SURFACE":"";
         float alpha=searching?1:Mathf.Clamp01((messageUntil-Time.unscaledTime)/.7f);message.alpha=alpha;
         if(searching&&Time.time-searchStarted>4)CancelSearch();
         if(PlayerSettingsUI.IsGameMenuOpen||Time.timeScale<=0||Cursor.lockState!=CursorLockMode.Locked){CancelSearch();return;}
@@ -43,7 +44,7 @@ public sealed class RockThrower:MonoBehaviour
         if(Input.GetMouseButtonDown(0)&&Carried>0&&!searching)BlindLungeMonster.Instance.RequestThrow(player,view.forward);
     }
     void CancelSearch(){if(!searching)return;searching=false;BlindLungeMonster.Instance?.UpdateSearchHold(player,Vector3.zero,false);ShowResult(5);}
-    public void ShowResult(int result){searching=false;messageUntil=Time.unscaledTime+2.5f;if(message==null)return;message.text=result==1?"Found one small rock":result==0?"Nothing found":result==2?"Look at nearby ground":result==3?"Wait before searching again":result==5?"Search interrupted":"Already holding a small rock";message.alpha=1;}
+    public void ShowResult(int result){searching=false;messageUntil=Time.unscaledTime+2.5f;if(message==null)return;message.text=result==1?"Found one small rock":result==0?"Nothing found":result==2?"Search only on the planet surface":result==3?"Wait before searching again":result==5?"Search interrupted":"Already holding a small rock";message.alpha=1;}
     void BuildHud(){
         var go=new GameObject("Small rock HUD",typeof(Canvas),typeof(CanvasScaler));hud=go.GetComponent<Canvas>();hud.renderMode=RenderMode.ScreenSpaceOverlay;hud.sortingOrder=35;go.transform.SetParent(transform,false);
         var scaler=go.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1920,1080);

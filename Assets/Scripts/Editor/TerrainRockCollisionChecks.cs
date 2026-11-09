@@ -9,6 +9,7 @@ using UnityEngine.SceneManagement;
 
 public static class TerrainRockCollisionChecks
 {
+    static bool meshMatches(TerrainRockCollisions root) => root.GetComponentsInChildren<MeshCollider>().All(c=>c.GetComponent<MeshFilter>()?.sharedMesh==c.sharedMesh && c.GetComponent<MeshRenderer>()!=null);
     static int checks;
     static void Check(bool okay,string message){if(!okay)throw new Exception(message);checks++;}
     public static void Run()
@@ -30,7 +31,7 @@ public static class TerrainRockCollisionChecks
             var collisions=TerrainRockCollisions.Install(scene);
             Check(collisions.RockCount==1&&collisions.ColliderCount==1,"one painted rock produces one solid collider");
             Check(TerrainRockCollisions.Install(scene)==collisions,"repeated scene setup cannot duplicate colliders");
-            Check(collisions.GetComponentsInChildren<Renderer>().Length==0,"collision setup never duplicates visible rocks");
+            Check(collisions.GetComponentsInChildren<Renderer>().Length==1 && terrain.treeDistance==0,"explicit mesh replaces native rock rendering"); Check(meshMatches(collisions),"visible geometry exactly matches solid meshes"); TerrainRockCollisions.EnsureLoadedScenes(); Check(TerrainRockCollisions.Install(scene)==collisions,"initial-scene fallback is idempotent");
             var mesh=collisions.GetComponentInChildren<MeshCollider>();
             Check(!mesh.isTrigger&&mesh.enabled&&!mesh.convex,"painted rock is solid static mesh geometry");
             Check(Vector3.Distance(mesh.transform.position,new Vector3(100,0,100))<.001f,"painted position preserved");
@@ -50,6 +51,10 @@ public static class TerrainRockCollisionChecks
                 Check(hit&&actor.transform.position.x<mesh.bounds.center.x,"actual "+actor.name+" cannot cross painted rock with terrain rendering/native tree colliders off");
                 UnityEngine.Object.DestroyImmediate(actor);
             }
+            typeof(TerrainRockCollisions).GetField("geometryVersion",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).SetValue(collisions,0);
+            var upgraded=TerrainRockCollisions.Install(scene);
+            Check(upgraded!=collisions&&upgraded.RockCount==1,"older live collision setup is rebuilt on script reload");
+            Check(meshMatches(upgraded)&&TerrainRockCollisions.Install(scene)==upgraded,"upgraded geometry matches rendering and stays idempotent");
             foreach(string name in new[]{"Night 1","Night1_MultiplayerTest","Night 2","Night 3"})
             {
                 var level=EditorSceneManager.OpenScene("Assets/Scenes/"+name+".unity",OpenSceneMode.Additive);

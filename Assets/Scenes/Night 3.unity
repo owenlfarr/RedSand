@@ -43277,7 +43277,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
   visual: {fileID: 1925556854}
-  hearingRange: 32
+  hearingRange: 40
   lungeDistance: 10
   lungeSpeed: 32
   windupSeconds: 0.35

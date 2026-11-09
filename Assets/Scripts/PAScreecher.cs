@@ -51,7 +51,7 @@ public sealed class PAScreecher : MonoBehaviour
         double end=Now+Mathf.Clamp(duration,5,15);
         if(Online)clock.PAScreechEndsAt.Value=end;else offlineEnd=end;
         eventsThisNight++;
-        if(BlindLungeMonster.Instance!=null){var pa=GameObject.Find("Radio");if(pa!=null)BlindLungeMonster.Instance.HearNoise(pa.transform.position,50,true);}
+        if(BlindLungeMonster.Instance!=null){var pa=GameObject.Find("Radio");if(pa!=null)BlindLungeMonster.Instance.HearNoise(pa.transform.position,40);}
         nextCheck=end+Mathf.Max(180,recoverySeconds);
         return true;
     }

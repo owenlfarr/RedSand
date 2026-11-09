@@ -8,7 +8,10 @@ public sealed class BlindLungeMonster : NetworkBehaviour
 {
     public static BlindLungeMonster Instance {get;private set;}
     public GameObject visual;
-    public float hearingRange=32f, lungeDistance=10f, lungeSpeed=32f, windupSeconds=.35f, recoverySeconds=1.25f;
+    public float hearingRange=40f, lungeDistance=10f, lungeSpeed=32f, windupSeconds=.35f, recoverySeconds=1.25f;
+    public float roamSpeed=2f, roamRadius=25f, searchRadius=8f;
+    public AudioClip lungeSound;
+    public const float RockDistractionSeconds=5f;
     public enum Phase {Listening,Windup,Lunging,Recovering}
     public NetworkVariable<Vector3> Position=new NetworkVariable<Vector3>();
     public NetworkVariable<float> Yaw=new NetworkVariable<float>();
@@ -16,6 +19,15 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     CharacterController motor;
     AudioSource heartbeat;
     AudioClip beat,impact;
+    AudioSource lungeAudio;
+    AudioClip generatedLunge;
+    readonly TerrainRockRoute roamRoute=new TerrainRockRoute();
+    readonly System.Random roamRandom=new System.Random();
+    Vector3 home,wanderDestination;
+    float nextWander,roamStalled;
+    bool hasLastSound;
+    public AudioSource LungeAudioSource=>lungeAudio;
+    public int LocalLungeSounds {get;private set;}
     Vector3 heardPosition,lungeDirection;
     float memoryUntil,phaseUntil,remaining,verticalSpeed,priorityUntil;
     Phase phase;
@@ -55,10 +67,12 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         beat=AudioClip.Create("Blind lunge heartbeat",samples.Length,1,rate,false);beat.SetData(samples,0);heartbeat.clip=beat;
         var data=new float[rate/8];var random=new System.Random(721);for(int i=0;i<data.Length;i++)data[i]=(float)(random.NextDouble()*2-1)*Mathf.Exp(-i/(rate*.025f))*.6f;
         impact=AudioClip.Create("Small rock impact",data.Length,1,rate,false);impact.SetData(data,0);
+        lungeAudio=audio.AddComponent<AudioSource>();lungeAudio.playOnAwake=false;lungeAudio.spatialBlend=1;lungeAudio.volume=.45f;lungeAudio.minDistance=2;lungeAudio.maxDistance=50;lungeAudio.dopplerLevel=0;lungeAudio.rolloffMode=AudioRolloffMode.Linear;
+        if(lungeSound==null){var cue=new float[rate/3];for(int i=0;i<cue.Length;i++){float t=(float)i/rate,fade=Mathf.Sin(Mathf.PI*i/cue.Length);cue[i]=(Mathf.Sin(2*Mathf.PI*(85*t+180*t*t))*.45f+(float)(random.NextDouble()*2-1)*.28f)*fade;}generatedLunge=AudioClip.Create("Blind lunge burst",cue.Length,1,rate,false);generatedLunge.SetData(cue,0);lungeSound=generatedLunge;}lungeAudio.clip=lungeSound;
     }
     public override void OnNetworkSpawn(){
         previouslyNetworked=true;motor.enabled=IsServer;
-        if(IsServer){SnapToGround();Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;
+        if(IsServer){SnapToGround();InitializeRoaming();Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;
             NetworkManager.SceneManager.OnSynchronizeComplete+=SynchronizeRocks;
             NetworkManager.OnClientDisconnectCallback+=ForgetPlayer;
         }else transform.SetPositionAndRotation(Position.Value,Quaternion.Euler(0,Yaw.Value,0));
@@ -72,12 +86,12 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     void ForgetPlayer(ulong id){lastPositions.Remove(id);footsteps.Remove(id);grounded.Remove(id);nextSearch.Remove(id);nextVoice.Remove(id);groundSearches.Remove(id);}
     public override void OnNetworkDespawn(){
         if(NetworkManager!=null){if(NetworkManager.SceneManager!=null)NetworkManager.SceneManager.OnSynchronizeComplete-=SynchronizeRocks;NetworkManager.OnClientDisconnectCallback-=ForgetPlayer;}
-        motor.enabled=false;heartbeat.Stop();flights.Clear();groundSearches.Clear();
+        motor.enabled=false;heartbeat.Stop();lungeAudio.Stop();flights.Clear();groundSearches.Clear();
         foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);rockVisuals.Clear();
     }
     void Update(){
         if(Online){if(!IsSpawned)return;if(!IsServer){phase=(Phase)State.Value;transform.SetPositionAndRotation(Vector3.Lerp(transform.position,Position.Value,1-Mathf.Exp(-25*Time.deltaTime)),Quaternion.Euler(0,Yaw.Value,0));return;}}
-        else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();heartbeat.Play();offlineReady=true;}}
+        else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();InitializeRoaming();heartbeat.Play();offlineReady=true;}}
         ObserveMovement();TickFlights();TickMovement();
         if(Online){Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;State.Value=(int)phase;}
     }
@@ -91,21 +105,25 @@ public sealed class BlindLungeMonster : NetworkBehaviour
             radius*=.25f;break;
         }
         if((point-transform.position).sqrMagnitude>radius*radius)return false;
-        heard=true;heardPosition=point;memoryUntil=Time.time+8;
-        if(distraction)priorityUntil=Time.time+1.2f;
+        heard=true;hasLastSound=true;heardPosition=point;memoryUntil=Time.time+8;nextWander=0;
+        if(distraction){priorityUntil=Time.time+RockDistractionSeconds;phase=Phase.Listening;remaining=0;}
         return true;
     }
     public static Vector3 LungeEndpoint(Vector3 origin,Vector3 noise,float maximum){Vector3 delta=Vector3.ProjectOnPlane(noise-origin,Vector3.up);return origin+Vector3.ClampMagnitude(delta,maximum);}
     void TickMovement(){
-        if(phase==Phase.Listening&&heard&&Time.time<=memoryUntil){phase=Phase.Windup;phaseUntil=Time.time+windupSeconds;}
+        if(phase==Phase.Listening&&heard&&Time.time>memoryUntil)heard=false;
+        if(phase==Phase.Listening&&heard){phase=Phase.Windup;phaseUntil=Time.time+windupSeconds;}
         if(phase==Phase.Windup&&Time.time>=phaseUntil){
             Vector3 end=LungeEndpoint(transform.position,heardPosition,lungeDistance);Vector3 delta=end-transform.position;
             remaining=delta.magnitude;lungeDirection=delta.normalized;
-            if(remaining>.2f){transform.rotation=Quaternion.LookRotation(lungeDirection);phase=Phase.Lunging;}else{heard=false;phase=Phase.Recovering;phaseUntil=Time.time+recoverySeconds;}
+            if(remaining>.2f){transform.rotation=Quaternion.LookRotation(lungeDirection);phase=Phase.Lunging;if(Online)LungeSoundClientRpc();else PlayLungeSound();}else{heard=false;phase=Phase.Recovering;phaseUntil=Time.time+recoverySeconds;}
         }
         verticalSpeed=motor.isGrounded?-2:Mathf.Max(-45,verticalSpeed-25*Time.deltaTime);
         Vector3 previous=transform.position;float travel=phase==Phase.Lunging?Mathf.Min(remaining,lungeSpeed*Time.deltaTime):0;
-        motor.Move((lungeDirection*travel)+Vector3.up*verticalSpeed*Time.deltaTime);
+        bool roaming=phase==Phase.Listening&&!heard;
+        Vector3 horizontal=roaming?WanderStep():lungeDirection*travel;
+        motor.Move(horizontal+Vector3.up*verticalSpeed*Time.deltaTime);
+        if(roaming){float moved=Vector3.ProjectOnPlane(transform.position-previous,Vector3.up).magnitude;roamStalled=moved<roamSpeed*Time.deltaTime*.1f?roamStalled+Time.deltaTime:0;}
         if(phase==Phase.Lunging){
             float moved=Vector3.ProjectOnPlane(transform.position-previous,Vector3.up).magnitude;remaining-=moved;
             if(remaining<=.03f||travel>.01f&&moved<travel*.15f){phase=Phase.Recovering;phaseUntil=Time.time+recoverySeconds;}
@@ -116,6 +134,24 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         }
         if(Time.time>memoryUntil&&phase==Phase.Listening)heard=false;
     }
+    void InitializeRoaming(){home=transform.position;wanderDestination=home;nextWander=0;roamStalled=0;}
+    Vector3 WanderStep(){
+        Vector3 center=hasLastSound?heardPosition:home;
+        if(Time.time>=nextWander||roamStalled>.7f||Vector3.ProjectOnPlane(wanderDestination-transform.position,Vector3.up).sqrMagnitude<1){
+            double angle=roamRandom.NextDouble()*System.Math.PI*2;
+            float radius=Mathf.Sqrt((float)roamRandom.NextDouble())*(hasLastSound?searchRadius:roamRadius);
+            wanderDestination=center+new Vector3((float)System.Math.Cos(angle)*radius,0,(float)System.Math.Sin(angle)*radius);
+            foreach(var terrain in Terrain.activeTerrains)if(terrain.gameObject.scene==gameObject.scene){var start=terrain.transform.position;var size=terrain.terrainData.size;if(wanderDestination.x>=start.x&&wanderDestination.x<=start.x+size.x&&wanderDestination.z>=start.z&&wanderDestination.z<=start.z+size.z){wanderDestination.y=terrain.SampleHeight(wanderDestination)+start.y+.05f;break;}}
+            nextWander=Time.time+3+(float)roamRandom.NextDouble()*4;roamStalled=0;
+        }
+        Vector3 direction=Vector3.ProjectOnPlane(wanderDestination-transform.position,Vector3.up).normalized;
+        var surface=TerrainRockNavigation.ForScene(gameObject.scene);
+        if(surface!=null&&surface.Ready)direction=roamRoute.Direction(motor,wanderDestination,direction);
+        if(direction.sqrMagnitude>.01f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(direction),Time.deltaTime*3);
+        return direction*roamSpeed*Time.deltaTime;
+    }
+    [ClientRpc]void LungeSoundClientRpc()=>PlayLungeSound();
+    void PlayLungeSound(){LocalLungeSounds++;if(lungeAudio!=null&&lungeSound!=null)lungeAudio.PlayOneShot(lungeSound);}
     void SnapToGround(){
         foreach(var t in Terrain.activeTerrains){var start=t.transform.position;var size=t.terrainData.size;Vector3 pos=transform.position;if(pos.x<start.x||pos.x>start.x+size.x||pos.z<start.z||pos.z>start.z+size.z)continue;
             bool enabled=motor.enabled;motor.enabled=false;pos.y=t.SampleHeight(pos)+start.y+.05f;transform.position=pos;motor.enabled=enabled;break;}
@@ -128,12 +164,12 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         if(player==null)return;Vector3 pos=player.transform.position;
         if(lastPositions.TryGetValue(id,out var previous)){
             float move=Vector3.ProjectOnPlane(pos-previous,Vector3.up).magnitude;
-            footsteps.TryGetValue(id,out float distance);distance+=move;
-            if(player.GetNetworkGrounded()&&distance>=(player.IsSprinting()?2.4f:1.7f)&&move<5){HearNoise(pos,player.IsSprinting()?32:12);distance=0;}
+            footsteps.TryGetValue(id,out float distance);
+            if(player.GetMoveInput().sqrMagnitude>.001f&&move<5){distance+=move;if(player.GetNetworkGrounded()&&distance>=(player.IsSprinting()?2.4f:1.7f)){HearNoise(pos,hearingRange);distance=0;}}else distance=0;
             footsteps[id]=distance;
         }
         bool onGround=player.GetNetworkGrounded();
-        if(grounded.TryGetValue(id,out bool wasGrounded)&&!wasGrounded&&onGround)HearNoise(pos,26);
+        if(grounded.TryGetValue(id,out bool wasGrounded)&&!wasGrounded&&onGround)HearNoise(pos,hearingRange);
         grounded[id]=onGround;
         lastPositions[id]=pos;
     }
@@ -151,18 +187,22 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         if(player==null||!Finite(direction)||direction.sqrMagnitude<.5f||direction.normalized.y>-.2f)return false;
         var body=player.GetComponent<CharacterController>();
         Vector3 feet=body!=null?player.transform.TransformPoint(body.center-Vector3.up*body.height*.5f):player.transform.position;
+        foreach(var collider in Physics.OverlapSphere(feet+Vector3.up*.1f,.12f,~0,QueryTriggerInteraction.Collide))
+            if(collider.CompareTag("Bunker")||collider.name=="BunkerZone")return false;
         Vector3 eye=player.playerCamera!=null?player.playerCamera.position:player.transform.position+Vector3.up*1.5f;
         RaycastHit? nearest=null;
         foreach(var hit in Physics.RaycastAll(eye,direction.normalized,Mathf.Clamp(Vector3.Distance(eye,feet)+3,3,15),~0,QueryTriggerInteraction.Ignore)){
             if(hit.transform.IsChildOf(player.transform))continue;if(!nearest.HasValue||hit.distance<nearest.Value.distance)nearest=hit;
         }
-        return nearest.HasValue&&nearest.Value.normal.y>.45f&&Vector3.Distance(nearest.Value.point,feet)<=3&&nearest.Value.collider.GetComponentInParent<PlayerController>()==null;
+        if(!nearest.HasValue||!(nearest.Value.collider is TerrainCollider)||nearest.Value.normal.y<=.45f||Vector3.Distance(nearest.Value.point,feet)>3)return false;
+        var terrain=nearest.Value.collider.GetComponent<Terrain>();
+        return terrain!=null&&Mathf.Abs(nearest.Value.point.y-(terrain.SampleHeight(nearest.Value.point)+terrain.transform.position.y))<.2f;
     }
     public void RequestSearch(PlayerController player,Vector3 aim){if(Online){if(IsSpawned)SearchRockServerRpc(aim,true,true);}else BeginSearch(0,player,aim);}
     public void UpdateSearchHold(PlayerController player,Vector3 aim,bool held){if(Online){if(IsSpawned)SearchRockServerRpc(aim,held,false);}else HoldSearch(0,player,aim,held);}
     [ServerRpc(RequireOwnership=false)]void SearchRockServerRpc(Vector3 aim,bool held,bool begin,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var p)){if(begin)BeginSearch(rpc.Receive.SenderClientId,p,aim);else HoldSearch(rpc.Receive.SenderClientId,p,aim,held);}}
     int Count(PlayerController p){var state=p.GetComponent<NetworkPlayerMovementState>();return Online&&state!=null?state.CarriedDistractionRocks.Value:p.GetComponent<RockThrower>().OfflineCount;}
-    void SetCount(PlayerController p,int value){var state=p.GetComponent<NetworkPlayerMovementState>();if(Online&&state!=null)state.CarriedDistractionRocks.Value=value;else p.GetComponent<RockThrower>().OfflineCount=value;}
+    void SetCount(PlayerController p,int value){value=Mathf.Clamp(value,0,1);var state=p.GetComponent<NetworkPlayerMovementState>();if(Online&&state!=null)state.CarriedDistractionRocks.Value=value;else p.GetComponent<RockThrower>().OfflineCount=value;}
     void BeginSearch(ulong id,PlayerController player,Vector3 aim){
         if(!Authority)return;
         if(nextSearch.TryGetValue(id,out float next)&&Time.time<next){RejectedSearchRequests++;SearchReply(id,player,3);return;}
@@ -220,10 +260,10 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     [ClientRpc]void RemoveRockClientRpc(int id)=>RemoveRock(id);
     void RemoveRock(int id){if(rockVisuals.TryGetValue(id,out var v)&&v!=null)Destroy(v.gameObject);rockVisuals.Remove(id);}
     void LandRock(int id,Vector3 point){LocalRockImpacts++;if(rockVisuals.TryGetValue(id,out var v)&&v!=null)v.Land(point);rockVisuals.Remove(id);AudioSource.PlayClipAtPoint(impact,point,.5f);}
-    public void ReportLocalSpeech(){if(Online&&!IsSpawned)return;if(Online)SpeechServerRpc();else{var p=FindFirstObjectByType<PlayerController>();if(p!=null)HearNoise(p.transform.position,26);}}
-    [ServerRpc(RequireOwnership=false)]void SpeechServerRpc(ServerRpcParams rpc=default){ulong id=rpc.Receive.SenderClientId;if(nextVoice.TryGetValue(id,out float next)&&Time.time<next)return;nextVoice[id]=Time.time+.5f;if(TryPlayer(id,out var p))HearNoise(p.transform.position,26);}
-    void OnDisable(){if(heartbeat!=null)heartbeat.Stop();}
-    public override void OnDestroy(){if(Instance==this)Instance=null;foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);if(beat!=null)Destroy(beat);if(impact!=null)Destroy(impact);base.OnDestroy();}
+    public void ReportLocalSpeech(){if(Online&&!IsSpawned)return;if(Online)SpeechServerRpc();else{var p=FindFirstObjectByType<PlayerController>();if(p!=null)HearNoise(p.transform.position,hearingRange);}}
+    [ServerRpc(RequireOwnership=false)]void SpeechServerRpc(ServerRpcParams rpc=default){ulong id=rpc.Receive.SenderClientId;if(nextVoice.TryGetValue(id,out float next)&&Time.time<next)return;nextVoice[id]=Time.time+.5f;if(TryPlayer(id,out var p))HearNoise(p.transform.position,hearingRange);}
+    void OnDisable(){if(heartbeat!=null)heartbeat.Stop();if(lungeAudio!=null)lungeAudio.Stop();}
+    public override void OnDestroy(){if(Instance==this)Instance=null;foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);if(beat!=null)Destroy(beat);if(impact!=null)Destroy(impact);if(generatedLunge!=null)Destroy(generatedLunge);base.OnDestroy();}
     void OnDrawGizmosSelected(){Gizmos.color=Color.yellow;Gizmos.DrawWireSphere(transform.position,hearingRange);Gizmos.color=Color.red;Gizmos.DrawLine(transform.position,transform.position+transform.forward*lungeDistance);}
 }
 

@@ -12,7 +12,7 @@ using Unity.Netcode.Transports.UTP;
  public NetworkVariable<int> Stage=new NetworkVariable<int>();
  BlindLungeMonster monster;string role;int previous=-1,checks;float nextReport,stageStart,nextHold;bool threw,released;
  readonly Dictionary<ulong,Report> reports=new Dictionary<ulong,Report>();
- struct Report{public int launches,impacts,replies,result,rocks,deaths,phase;public Vector3 position;public bool pa;public float volume;}
+ struct Report{public int launches,impacts,replies,result,rocks,deaths,phase,sounds;public Vector3 position;public bool pa;public float volume;}
  IEnumerator Start(){var args=Environment.GetCommandLineArgs();int index=Array.IndexOf(args,"-blindTest");if(index<0)yield break;role=args[index+1];Application.runInBackground=true;Application.targetFrameRate=60;QualitySettings.vSyncCount=0;
   FindFirstObjectByType<NightTimeManager>().gameObject.AddComponent<PAScreecher>();
   NetworkManager.GetComponent<UnityTransport>().SetConnectionData("127.0.0.1",17849,"127.0.0.1");yield return null;
@@ -27,7 +27,7 @@ using Unity.Netcode.Transports.UTP;
   if(Stage.Value==6&&role=="client")pos=new Vector3(0,0,6);
   if(Stage.Value==7&&role=="host")pos=new Vector3(20,0,6);
   obj.transform.position=pos;
-  if(IsOwner||obj.IsOwner){movement.IsGrounded.Value=true;movement.IsSprinting.Value=Stage.Value==1;}
+  if(IsOwner||obj.IsOwner){movement.IsGrounded.Value=true;movement.IsSprinting.Value=Stage.Value==1;movement.MoveInput.Value=Stage.Value==1?Vector2.up:Vector2.zero;}
   if(role=="client"&&Stage.Value==2&&!threw){threw=true;monster.RequestSearch(player,Vector3.down);monster.RequestSearch(player,Vector3.down);}
   if(role=="client"&&Stage.Value==2&&Time.time>=nextHold){nextHold=Time.time+.12f;monster.UpdateSearchHold(player,Vector3.down,true);}
   if(role=="client"&&Stage.Value==8){
@@ -37,20 +37,24 @@ using Unity.Netcode.Transports.UTP;
   }
   if(role=="client"&&Stage.Value==3&&!threw&&movement.CarriedDistractionRocks.Value==1){threw=true;monster.RequestThrow(player,Vector3.forward+Vector3.up*.6f);}
   if(role=="client"&&Stage.Value==4&&!threw){threw=true;monster.ReportLocalSpeech();}
-  if(!IsServer&&Time.time>=nextReport){nextReport=Time.time+.08f;ReportServerRpc(monster.LocalRockLaunches,monster.LocalRockImpacts,monster.LocalSearchReplies,monster.LastLocalSearchResult,movement.CarriedDistractionRocks.Value,monster.LocalDeathPresentations,(int)monster.CurrentPhase,monster.transform.position,FindFirstObjectByType<PAScreecher>().IsActive,AudioListener.volume);}
+  if(!IsServer&&Time.time>=nextReport){nextReport=Time.time+.08f;ReportServerRpc(monster.LocalRockLaunches,monster.LocalRockImpacts,monster.LocalSearchReplies,monster.LastLocalSearchResult,movement.CarriedDistractionRocks.Value,monster.LocalDeathPresentations,(int)monster.CurrentPhase,monster.transform.position,FindFirstObjectByType<PAScreecher>().IsActive,AudioListener.volume,monster.LocalLungeSounds);}
  }
- [ServerRpc(RequireOwnership=false)]void ReportServerRpc(int launches,int impacts,int replies,int result,int rocks,int deaths,int phase,Vector3 position,bool pa,float volume,ServerRpcParams rpc=default){reports[rpc.Receive.SenderClientId]=new Report{launches=launches,impacts=impacts,replies=replies,result=result,rocks=rocks,deaths=deaths,phase=phase,position=position,pa=pa,volume=volume};}
- void ResetMonster(Vector3 position){var motor=monster.GetComponent<CharacterController>();motor.enabled=false;monster.transform.position=position+Vector3.up*.05f;motor.enabled=true;var flags=BindingFlags.Instance|BindingFlags.NonPublic;typeof(BlindLungeMonster).GetField("heard",flags).SetValue(monster,false);typeof(BlindLungeMonster).GetField("phase",flags).SetValue(monster,BlindLungeMonster.Phase.Listening);typeof(BlindLungeMonster).GetField("priorityUntil",flags).SetValue(monster,0f);typeof(BlindLungeMonster).GetField("memoryUntil",flags).SetValue(monster,0f);Physics.SyncTransforms();}
+ [ServerRpc(RequireOwnership=false)]void ReportServerRpc(int launches,int impacts,int replies,int result,int rocks,int deaths,int phase,Vector3 position,bool pa,float volume,int sounds,ServerRpcParams rpc=default){reports[rpc.Receive.SenderClientId]=new Report{launches=launches,impacts=impacts,replies=replies,result=result,rocks=rocks,deaths=deaths,phase=phase,position=position,pa=pa,volume=volume,sounds=sounds};}
+ void ResetMonster(Vector3 position){var motor=monster.GetComponent<CharacterController>();motor.enabled=false;monster.transform.position=position+Vector3.up*.05f;motor.enabled=true;var flags=BindingFlags.Instance|BindingFlags.NonPublic;typeof(BlindLungeMonster).GetField("heard",flags).SetValue(monster,false);typeof(BlindLungeMonster).GetField("phase",flags).SetValue(monster,BlindLungeMonster.Phase.Listening);typeof(BlindLungeMonster).GetField("priorityUntil",flags).SetValue(monster,0f);typeof(BlindLungeMonster).GetField("memoryUntil",flags).SetValue(monster,0f);typeof(BlindLungeMonster).GetField("home",flags).SetValue(monster,monster.transform.position);typeof(BlindLungeMonster).GetField("hasLastSound",flags).SetValue(monster,false);typeof(BlindLungeMonster).GetField("nextWander",flags).SetValue(monster,0f);Physics.SyncTransforms();}
  IEnumerator Run(){
   yield return Wait(()=>NetworkManager.ConnectedClientsList.Count>=2,"initial client joins",25);
   var other=NetworkManager.ConnectedClientsList.First(c=>c.ClientId!=NetworkManager.LocalClientId);ulong clientId=other.ClientId;
   yield return new WaitForSeconds(.5f);
   foreach(var peer in NetworkManager.ConnectedClientsList){var p=peer.PlayerObject.GetComponent<PlayerController>();var flags=BindingFlags.Instance|BindingFlags.NonPublic;typeof(PlayerController).GetField("controller",flags).SetValue(p,p.GetComponent<CharacterController>());typeof(PlayerController).GetField("movementState",flags).SetValue(p,p.GetComponent<NetworkPlayerMovementState>());}
   Check(monster.IsServer&&monster.GetComponent<CharacterController>().enabled,"host owns monster motor");
+  Vector3 idle=monster.transform.position;yield return new WaitForSeconds(1.2f);
+  Check(Vector3.ProjectOnPlane(monster.transform.position-idle,Vector3.up).magnitude>1&&!monster.HasHeardNoise,"blind idle roaming without any player noise");
+  Check(monster.LungeAudioSource.spatialBlend==1&&monster.LungeAudioSource.clip!=null,"lunge has a positional sound cue");
   ResetMonster(Vector3.zero);Stage.Value=1;yield return new WaitForSeconds(1.25f);
   Check(monster.HasHeardNoise&&monster.transform.position.z>5,"remote sprint footsteps trigger host lunge");
   yield return Wait(()=>reports.ContainsKey(clientId)&&reports[clientId].phase!=(int)BlindLungeMonster.Phase.Listening,"client sees authoritative lunge phase",3);
   Check(Vector3.Distance(reports[clientId].position,monster.Position.Value)<2,"client follows replicated monster position");
+  yield return Wait(()=>monster.LocalLungeSounds>0&&reports[clientId].sounds>0,"each real lunge emits sound on host and client",3);
   for(int seed=0;seed<100;seed++){UnityEngine.Random.InitState(seed);if(BlindLungeMonster.SearchSucceeds(UnityEngine.Random.value)){UnityEngine.Random.InitState(seed);break;}}
   ResetMonster(Vector3.zero);Stage.Value=2;yield return new WaitForSeconds(1.6f);
   Check(monster.RejectedSearchRequests>=1,"host rejects repeated search during 2.5 second cooldown");
@@ -63,10 +67,17 @@ using Unity.Netcode.Transports.UTP;
   yield return Wait(()=>reports[clientId].launches==1&&reports[clientId].impacts==1,"client and host share one projectile and one impact",3);
   Check(monster.LocalRockLaunches==1&&other.PlayerObject.GetComponent<NetworkPlayerMovementState>().CarriedDistractionRocks.Value==0,"throw spends exactly one server-owned rock");
   Check(monster.HasHeardNoise&&monster.LastHeardPosition.z>30,"rock impact distracts host monster away from thrower");
+  Vector3 rockTarget=monster.LastHeardPosition;float rockUntil=(float)typeof(BlindLungeMonster).GetField("priorityUntil",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(monster);
+  Check(rockUntil-Time.time>4.5f,"rock impact grants a full five-second distraction");
+  Check(!monster.HearNoise(monster.transform.position+Vector3.right*3,40)&&monster.LastHeardPosition==rockTarget,"rock priority ignores nearby player sounds");
   int priorReplies=reports[clientId].replies;Stage.Value=8;
   yield return Wait(()=>reports[clientId].replies>priorReplies&&reports[clientId].result==5,"releasing held search returns interrupted result",3);
   yield return new WaitForSeconds(1.1f);
   Check(other.PlayerObject.GetComponent<NetworkPlayerMovementState>().CarriedDistractionRocks.Value==0,"canceled held search never awards a rock later");
+  while(Time.time<rockUntil-.08f)yield return null;
+  Check(!monster.HearNoise(monster.transform.position+Vector3.right*3,40),"player noise still ignored just before five seconds");
+  while(Time.time<=rockUntil+.05f)yield return null;
+  Check(monster.HearNoise(monster.transform.position+Vector3.right*3,40),"player noise becomes audible again after five seconds");
   ResetMonster(new Vector3(80,0,16));Stage.Value=4;
   yield return Wait(()=>monster.HasHeardNoise,"client speech report attracts host monster",3);
   var pa=FindFirstObjectByType<PAScreecher>();
@@ -76,7 +87,7 @@ using Unity.Netcode.Transports.UTP;
   ResetMonster(new Vector3(40,0,20));Stage.Value=5;File.WriteAllText("Logs/Blind-latejoin.ready","ready");
   yield return Wait(()=>NetworkManager.ConnectedClientsList.Count>=3,"late client joins running session",30);
   var late=NetworkManager.ConnectedClientsList.First(c=>c.ClientId!=NetworkManager.LocalClientId&&c.ClientId!=clientId);
-  yield return Wait(()=>reports.ContainsKey(late.ClientId)&&Vector3.Distance(reports[late.ClientId].position,monster.Position.Value)<.3f,"late join receives current monster position",6);
+  yield return Wait(()=>reports.ContainsKey(late.ClientId)&&Vector3.Distance(reports[late.ClientId].position,monster.Position.Value)<.6f,"late join receives current moving monster position",6);
   yield return Wait(()=>reports[late.ClientId].pa&&reports[late.ClientId].volume<.05f,"late join receives ongoing PA takeover",3);
   FindFirstObjectByType<NightTimeManager>().PAScreechEndsAt.Value=0;
   yield return Wait(()=>!pa.IsActive&&!reports[clientId].pa&&!reports[late.ClientId].pa&&reports[clientId].volume>.9f&&reports[late.ClientId].volume>.9f,"PA expiry restores hearing on all peers",3);

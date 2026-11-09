@@ -338,14 +338,17 @@ namespace Networking
                 return Task.CompletedTask;
             }
 
-            Transform source = ResolveLocalVoiceTransform();
-            if (source == null)
-            {
-                return Task.CompletedTask;
-            }
-
             try
             {
+                // Lobby chat is centered rather than positioned around the menu camera.
+                string scene=SceneManager.GetActiveScene().name;
+                if(scene=="MainMenu"||scene=="Menu")
+                {
+                    VivoxService.Instance.Set3DPosition(Vector3.zero,Vector3.zero,Vector3.forward,Vector3.up,currentChannel,allowPanning:false);
+                    return Task.CompletedTask;
+                }
+                Transform source = ResolveLocalVoiceTransform();
+                if(source==null)return Task.CompletedTask;
                 Vector3 position = source.position;
                 Transform listener = ResolveLocalVoiceListener(source);
                 VivoxService.Instance.Set3DPosition(position, listener.position, listener.forward, listener.up, currentChannel);

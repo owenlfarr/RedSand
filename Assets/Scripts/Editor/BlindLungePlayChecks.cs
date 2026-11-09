@@ -23,12 +23,16 @@ using TMPro;
    foreach(var zombie in UnityEngine.Object.FindObjectsByType<ZombieAI>(FindObjectsSortMode.None))zombie.enabled=false;
    foreach(var watcher in UnityEngine.Object.FindObjectsByType<PowerStationWatcher>(FindObjectsSortMode.None))watcher.enabled=false;
    foreach(var surveyor in UnityEngine.Object.FindObjectsByType<SurveyorMonster>(FindObjectsSortMode.None))surveyor.enabled=false;
+   var terrain=Terrain.activeTerrain;var body=player.GetComponent<CharacterController>();
+   Vector3 surface=monster.transform.position+Vector3.right*5;
+   surface.y=terrain.SampleHeight(surface)+terrain.transform.position.y+.05f-player.transform.TransformVector(body.center-Vector3.up*body.height*.5f).y;
+   body.enabled=false;player.transform.position=surface;body.enabled=true;
    var floor=GameObject.CreatePrimitive(PrimitiveType.Cube);floor.transform.position=new Vector3(0,2999.5f,0);floor.transform.localScale=new Vector3(200,1,200);
    var motor=monster.GetComponent<CharacterController>();motor.enabled=false;monster.transform.position=start=new Vector3(0,3000.05f,0);motor.enabled=true;Physics.SyncTransforms();
    Require(monster.HearNoise(start+Vector3.right*25,40,true),"audible rock target rejected");stageAt=Time.time;stage=1;
   }else if(stage==1&&Time.time-stageAt>1){
    float distance=Vector3.ProjectOnPlane(monster.transform.position-start,Vector3.up).magnitude;Require(Mathf.Abs(distance-10)<.15f,"actual lunge did not stop at 10m: "+distance);
-   Require(BlindLungeMonster.GroundInReach(player,Vector3.down),"player cannot search actual floor");
+   Require(BlindLungeMonster.GroundInReach(player,Vector3.down),"player cannot search actual planet surface");
    monster.RequestSearch(player,Vector3.down);stageAt=Time.time;stage=2;
   }else if(stage==2&&Time.time-stageAt<=1.3f){monster.UpdateSearchHold(player,Vector3.down,true);
   }else if(stage==2&&Time.time-stageAt>1.3f){
