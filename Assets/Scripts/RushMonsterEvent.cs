@@ -46,6 +46,11 @@ public class RushMonsterEvent : NetworkBehaviour
     [Tooltip("Red emergency lights")]
     public Light[] redLights;
 
+    [Tooltip("Exterior ladder/entrance light: warns approaching players even outside the bunker")]
+    public Light exteriorWarningLight;
+    private Coroutine exteriorFlicker;
+    private bool exteriorWarningActive, exteriorOriginalEnabled;
+
     [Header("Audio")]
     public AudioClip flickerSound;
     public AudioClip rushApproachingSound;
@@ -160,6 +165,14 @@ public class RushMonsterEvent : NetworkBehaviour
             IsRushPassingNetwork.Value = isRushPassing;
         }
     }
+
+    public override void OnNetworkDespawn()
+    {
+        StopExteriorWarning();
+        base.OnNetworkDespawn();
+    }
+
+    void OnDisable() => StopExteriorWarning();
 
     void Update()
     {
@@ -335,6 +348,7 @@ public class RushMonsterEvent : NetworkBehaviour
             rushUI.ShowWarning("something is coming...");
         }
 
+        BeginExteriorWarning();
         yield return StartCoroutine(FlickerLightsLocal());
 
         bool playerHid = IsAnyLockerHiddenForLocalPlayer();
@@ -464,6 +478,7 @@ public class RushMonsterEvent : NetworkBehaviour
     [ClientRpc]
     private void FlickerClientRpc()
     {
+        BeginExteriorWarning();
         if (!IsLocalPlayerInBunker())
         {
             return;
@@ -506,6 +521,7 @@ public class RushMonsterEvent : NetworkBehaviour
     [ClientRpc]
     private void RestoreLightsClientRpc()
     {
+        StopExteriorWarning();
         if (rushUI != null)
         {
             rushUI.HideWarning();
@@ -557,6 +573,42 @@ public class RushMonsterEvent : NetworkBehaviour
         }
 
         KillPlayerClientRpc(clientId);
+    }
+
+    void BeginExteriorWarning()
+    {
+        StopExteriorWarning();
+        if (exteriorWarningLight != null)
+            exteriorFlicker = StartCoroutine(FlickerExteriorWarningLocal());
+    }
+
+    // This cue is world lighting, independent of the local player's bunker state.
+    IEnumerator FlickerExteriorWarningLocal()
+    {
+        if (exteriorWarningLight == null) yield break;
+        exteriorOriginalEnabled = exteriorWarningLight.enabled;
+        exteriorWarningActive = true;
+        for (int pulse = 0; pulse < 10; pulse++)
+        {
+            if (exteriorWarningLight == null) break;
+            exteriorWarningLight.enabled = false;
+            yield return new WaitForSeconds(Random.Range(0.05f, 0.15f));
+            if (exteriorWarningLight == null) break;
+            exteriorWarningLight.enabled = exteriorOriginalEnabled;
+            yield return new WaitForSeconds(Random.Range(0.05f, 0.2f));
+        }
+        if (exteriorWarningLight != null) exteriorWarningLight.enabled = exteriorOriginalEnabled;
+        exteriorWarningActive = false;
+        exteriorFlicker = null;
+    }
+
+    void StopExteriorWarning()
+    {
+        if (exteriorFlicker != null) StopCoroutine(exteriorFlicker);
+        exteriorFlicker = null;
+        if (exteriorWarningActive && exteriorWarningLight != null)
+            exteriorWarningLight.enabled = exteriorOriginalEnabled;
+        exteriorWarningActive = false;
     }
 
     IEnumerator FlickerLightsLocal()
@@ -905,6 +957,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     private void FinishOfflineEvent()
     {
+        StopExteriorWarning();
         isEventActive = false;
         nextCheckTime = Time.time + checkInterval;
     }

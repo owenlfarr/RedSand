@@ -51312,6 +51312,7 @@ MonoBehaviour:
   - {fileID: 462839631}
   - {fileID: 2111470297}
   redLights: []
+  exteriorWarningLight: {fileID: 30873491}
   flickerSound: {fileID: 8300000, guid: 959e2dda0c880b243838837f14fabc35, type: 3}
   rushApproachingSound: {fileID: 8300000, guid: 544864fbb283542499ede0165587975b, type: 3}
   rushPassSound: {fileID: 8300000, guid: 2fbeb486509ab804a88f4903aa93d271, type: 3}
