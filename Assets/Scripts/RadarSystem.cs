@@ -226,7 +226,7 @@ public class RadarSystem : NetworkBehaviour
         {
             if (!IsOnCooldown() && !IsRadarLockedOut())
             {
-                interactionPromptText.text = $"Press {INTERACTION_KEY} to scan radar ({UsesRemaining}/{UseCapacity} uses)";
+                interactionPromptText.text = $"Press {INTERACTION_KEY} to scan radar";
                 interactionPromptText.gameObject.SetActive(true);
             }
             else
@@ -547,13 +547,13 @@ public class RadarSystem : NetworkBehaviour
         }
 
         if(UsesRemaining<=0){
-            cooldownText.text=$"RADAR WORN OUT / 0/{UseCapacity} uses\nRepair at solar station: {RepairMetalCost} metal";
+            cooldownText.text=$"RADAR BROKEN\nRepair at solar station: {RepairMetalCost} metal";
             cooldownText.color=new Color(1,.35f,.25f);cooldownText.gameObject.SetActive(true);return;
         }
         if (IsOnCooldown())
         {
             float remaining = GetRemainingCooldown();
-            cooldownText.text = $"Radar: {remaining:F1}s / {UsesRemaining}/{UseCapacity} uses";
+            cooldownText.text = $"Radar: {remaining:F1}s";
             cooldownText.color = new Color(0f, 0.8f, 1f);
             cooldownText.fontSize = 18;
             cooldownText.fontStyle = TMPro.FontStyles.Bold;
@@ -562,8 +562,8 @@ public class RadarSystem : NetworkBehaviour
         }
         else
         {
-            cooldownText.text=$"Radar: {UsesRemaining}/{UseCapacity} uses";
-            cooldownText.color=Color.white;cooldownText.gameObject.SetActive(true);
+            cooldownText.text="";
+            cooldownText.gameObject.SetActive(false);
         }
     }
 

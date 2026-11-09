@@ -32,11 +32,11 @@ public sealed class RadarRepairStation:MonoBehaviour
         if(prompt==null)BuildPrompt();canvas.SetActive(true);
         ulong id=Online?NetworkManager.Singleton.LocalClientId:0;
         bool occupied=radar.MaintenanceOwner!=ulong.MaxValue&&radar.MaintenanceOwner!=id;
-        if(!radar.NeedsMaintenance)prompt.text=$"SOLAR / RADAR REPAIR\nRadar ready: {radar.UsesRemaining}/{radar.UseCapacity} uses";
+        if(!radar.NeedsMaintenance)prompt.text="SOLAR / RADAR REPAIR\nRadar operational";
         else if(occupied)prompt.text="SOLAR / RADAR REPAIR\nAnother player is repairing the radar";
-        else if(radar.AvailableRepairMetal<radar.RepairMetalCost)prompt.text=$"RADAR: {radar.UsesRemaining}/{radar.UseCapacity} uses\nNeed {radar.RepairMetalCost} metal (team has {radar.AvailableRepairMetal})";
+        else if(radar.AvailableRepairMetal<radar.RepairMetalCost)prompt.text=$"RADAR MAINTENANCE\nNeed {radar.RepairMetalCost} metal (team has {radar.AvailableRepairMetal})";
         else if(radar.MaintenanceOwner==id)prompt.text=$"REPAIRING RADAR: {Mathf.Clamp01(radar.MaintenanceProgress/radar.MaintenanceSeconds)*100:F0}%\n{radar.RepairMetalCost} metal charged on completion";
-        else prompt.text=$"RADAR: {radar.UsesRemaining}/{radar.UseCapacity} uses\nHold [E] to repair ({radar.MaintenanceSeconds:F0}s) / {radar.RepairMetalCost} metal";
+        else prompt.text=$"RADAR MAINTENANCE\nHold [E] to repair ({radar.MaintenanceSeconds:F0}s) / {radar.RepairMetalCost} metal";
         bool held=!occupied&&radar.NeedsMaintenance&&radar.AvailableRepairMetal>=radar.RepairMetalCost&&Input.GetKey(KeyCode.E)&&Cursor.lockState==CursorLockMode.Locked;
         if(held&&Time.unscaledTime>=nextHeartbeat){radar.RequestMaintenance(true);requested=true;nextHeartbeat=Time.unscaledTime+.15f;}
         if(!held)Release();
