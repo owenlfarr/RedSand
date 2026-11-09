@@ -25,6 +25,9 @@ namespace Networking
 
         [Header("Scene")]
         [SerializeField] private string multiplayerSceneName = "Night1_MultiplayerTest";
+        [Tooltip("Temporary playtest override: host starts directly on Night 3 without changing saved unlocks")]
+        [SerializeField] private bool playtestStartNightThree;
+        public string SelectedStartingScene => playtestStartNightThree ? "Night 3" : NightStartUnlock.StartingScene;
         [SerializeField] private int maxConnections = 3;
         [SerializeField] private string relayConnectionType = "dtls";
 
@@ -768,7 +771,7 @@ namespace Networking
                 nm.SceneManager.OnLoadEventCompleted += OnNetworkSceneLoadCompleted;
             }
 
-            multiplayerSceneName = NightStartUnlock.StartingScene;
+            multiplayerSceneName = SelectedStartingScene;
             var progression=nm.GetComponent<NetworkLevelProgression>();
             if(progression==null)progression=nm.gameObject.AddComponent<NetworkLevelProgression>();
             progression.BeginCampaign(multiplayerSceneName);
@@ -1496,9 +1499,9 @@ namespace Networking
             }
             bool show=HasActiveHostParty && !matchStarted;
             startingNightButton.gameObject.SetActive(show);
-            startingNightButton.interactable=NightStartUnlock.IsUnlocked && !isBusy;
+            startingNightButton.interactable=!playtestStartNightThree && NightStartUnlock.IsUnlocked && !isBusy;
             var label=startingNightButton.GetComponentInChildren<TMP_Text>();
-            if(label!=null)label.text=NightStartUnlock.IsUnlocked?(NightStartUnlock.StartOnNightTwo?"Starting night: 2 (change)":"Starting night: 1 (change)"):"Night 2 start: locked";
+            if(label!=null)label.text=playtestStartNightThree?"Starting night: 3 (TEST)":NightStartUnlock.IsUnlocked?(NightStartUnlock.StartOnNightTwo?"Starting night: 2 (change)":"Starting night: 1 (change)"):"Night 2 start: locked";
         }
 
         private static Button CreateMenuButton(Transform parent, string name, string labelText, Vector2 anchor, Vector2 size, Vector2 position, TextAlignmentOptions alignment)

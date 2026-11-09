@@ -3648,6 +3648,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   menuSceneName: MainMenu
   multiplayerSceneName: Night1_MultiplayerTest
+  playtestStartNightThree: 1
   maxConnections: 3
   relayConnectionType: dtls
   createLobbyButton: {fileID: 1552854405}

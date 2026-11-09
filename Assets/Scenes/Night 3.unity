@@ -59651,7 +59651,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '[ NIGHT 02 // LOCAL TIME ]'
+  m_text: '[ NIGHT 03 // LOCAL TIME ]'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: b7449cc2f871c4f488fe6d42a64603a3, type: 2}
   m_sharedMaterial: {fileID: -501461727225435404, guid: b7449cc2f871c4f488fe6d42a64603a3, type: 2}
