@@ -51,6 +51,9 @@ public sealed class TerrainRockNavigation : MonoBehaviour
         var markups = new List<NavMeshBuildMarkup>();
         foreach (var root in scene.GetRootGameObjects())
         {
+            // Painted rocks already have explicit navigation obstacle volumes.
+            // Their physics-only copies must not be collected a second time.
+            if (root.GetComponent<TerrainRockCollisions>() != null) continue;
             foreach (var actor in root.GetComponentsInChildren<CharacterController>(true))
                 markups.Add(new NavMeshBuildMarkup { root = actor.transform, ignoreFromBuild = true });
             foreach (var body in root.GetComponentsInChildren<Rigidbody>(true))
