@@ -26,12 +26,16 @@ public sealed class RockThrower:MonoBehaviour
         preview.gameObject.SetActive(Carried>0);
         if(rock!=null)rock.Rotate(0,35*Time.unscaledDeltaTime,0);
         var view=player.playerCamera;if(view==null)return;
+        var pickup=SmallRockPickup.LookTarget(player);
         bool ground=BlindLungeMonster.GroundInReach(player,view.forward);
-        hint.text=Carried>0?"SMALL ROCK  /  CLICK TO THROW":searching?"":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"[E] SEARCH FOR A SMALL ROCK"):"";
+        hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?"":pickup!=null?"[E] PICK UP SMALL ROCK":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"[E] SEARCH GROUND FOR A SMALL ROCK"):"";
         float alpha=searching?1:Mathf.Clamp01((messageUntil-Time.unscaledTime)/.7f);message.alpha=alpha;
         if(searching&&Time.time-searchStarted>4){searching=false;message.text="Search interrupted";messageUntil=Time.unscaledTime+2;}
         if(PlayerSettingsUI.IsGameMenuOpen||Time.timeScale<=0||Cursor.lockState!=CursorLockMode.Locked)return;
-        if(Input.GetKeyDown(KeyCode.E)&&ground&&!searching&&Carried==0&&Time.time>=nextSearch){
+        if(Input.GetKeyDown(KeyCode.E)&&pickup!=null&&!searching&&Carried==0){
+            BlindLungeMonster.Instance.RequestPickup(player,pickup.pickupId);
+        }
+        else if(Input.GetKeyDown(KeyCode.E)&&ground&&!searching&&Carried==0&&Time.time>=nextSearch){
             nextSearch=Time.time+BlindLungeMonster.SearchCooldown;searchStarted=Time.time;searching=true;message.text="Searching...";message.alpha=1;
             BlindLungeMonster.Instance.RequestSearch(player,view.forward);
         }

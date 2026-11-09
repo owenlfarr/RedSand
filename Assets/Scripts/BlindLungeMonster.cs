@@ -13,6 +13,8 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     public NetworkVariable<Vector3> Position=new NetworkVariable<Vector3>();
     public NetworkVariable<float> Yaw=new NetworkVariable<float>();
     public NetworkVariable<int> State=new NetworkVariable<int>();
+    public NetworkVariable<ulong> CollectedRockMask=new NetworkVariable<ulong>();
+    ulong offlineCollectedRockMask;
     CharacterController motor;
     AudioSource heartbeat;
     AudioClip beat,impact;
@@ -156,6 +158,18 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         }
         return nearest.HasValue&&nearest.Value.normal.y>.45f&&Vector3.Distance(nearest.Value.point,feet)<=3&&nearest.Value.collider.GetComponentInParent<PlayerController>()==null;
     }
+    public bool IsPickupAvailable(int id)=>id>=0&&id<64&&(!Online||IsSpawned)&&((Online?CollectedRockMask.Value:offlineCollectedRockMask)&(1UL<<id))==0;
+    public void RequestPickup(PlayerController player,int id){if(Online){if(IsSpawned)PickupRockServerRpc(id);}else CollectPickup(player,id);}
+    [ServerRpc(RequireOwnership=false)]void PickupRockServerRpc(int id,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var player))CollectPickup(player,id);}
+    void CollectPickup(PlayerController player,int id){
+        if(!Authority||player==null||!IsPickupAvailable(id)||Count(player)>0)return;
+        SmallRockPickup pickup=null;
+        foreach(var candidate in FindObjectsByType<SmallRockPickup>(FindObjectsSortMode.None))
+            if(candidate.gameObject.scene==gameObject.scene&&candidate.pickupId==id){pickup=candidate;break;}
+        if(pickup==null||!pickup.CanReach(player))return;
+        SetCount(player,1);
+        if(Online)CollectedRockMask.Value|=1UL<<id;else offlineCollectedRockMask|=1UL<<id;
+    }
     public void RequestSearch(PlayerController player,Vector3 aim){if(Online)SearchRockServerRpc(aim);else BeginSearch(0,player,aim);}
     [ServerRpc(RequireOwnership=false)]void SearchRockServerRpc(Vector3 aim,ServerRpcParams rpc=default){if(TryPlayer(rpc.Receive.SenderClientId,out var p))BeginSearch(rpc.Receive.SenderClientId,p,aim);}
     int Count(PlayerController p){var state=p.GetComponent<NetworkPlayerMovementState>();return Online&&state!=null?state.CarriedDistractionRocks.Value:p.GetComponent<RockThrower>().OfflineCount;}
@@ -171,6 +185,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         yield return new WaitForSeconds(SearchDuration);
         if(player==null||Online&&!TryPlayer(id,out player))yield break;
         var life=player.GetComponent<OxygenSystem>();if(life!=null&&life.IsDead())yield break;
+        if(Count(player)>0){SearchReply(id,player,4);yield break;}
         bool found=SearchSucceeds(Random.value);if(found)SetCount(player,1);SearchReply(id,player,found?1:0);
     }
     void SearchReply(ulong id,PlayerController player,int result){if(Online)SearchReplyClientRpc(result,new ClientRpcParams{Send=new ClientRpcSendParams{TargetClientIds=new[]{id}}});else player.GetComponent<RockThrower>()?.ShowResult(result);}
