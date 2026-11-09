@@ -1,5 +1,14 @@
 # RedSand project context
 
+## Nights 4/5 and seamless campaign transfers (2026-11-09)
+
+- Authored Night 4 and Night 5 from the saved Night 3 map; preserved geometry, night duration and equipment/resource mechanics. Night 3 -> 4 -> 5 -> MainMenu. Lunge and PA stay restricted to Night 3 onward. Existing speeds increase 5% per night, with small pursuit/reaction adjustments. Outages are 23%/26% per existing 55-second check; radar uses stay at 12 from Night 4 onward.
+- Whisper (Night 4+): translucent cube, positional whisper/laugh, silent chase, host-validated flashlight retreat and alternate-angle retries, nearby teammate handoff, bunker escape. Burrow (Night 5): cube above ground, warning, underground sand/smoke trail and burrowing audio, host-resolved timed-jump counter, brief remote-jump grace and a real server-clock 30-second respawn window. Host owns all movement/targeting/hits; clients render replicated state; deaths target the victim only.
+- Persistent NightTransition covers all peers before scene loading, with reliable acknowledgements. Lobby Start fades all screens to black. Night completion shows centered 8 AM, removes the text, holds black, then loads. New scenes wait for local spawned players/clocks, show their NIGHT number and fade in. Final Night 5 returns the party to menu. Survivor/spectator rosters and existing spawn passes are preserved.
+- Sweep fixes include fresh-session transition tokens, stale-reveal rejection, eligible teammate selection, destroyed spectator-overlay fade guards, and cooldown timing under low frame rates. Replaced competing intro black overlays while retaining blur. Gameplay/oxygen updates pause during transition cards; networking continues.
+- Final standalone localhost NGO/Unity Transport sweep passed 130 host assertions (encounters 30, lunge/PA 36, radar 23, complete five-night campaign/reconnect 41). Editor checks passed 67 assertions plus canonical scene identity preflight. Full production-scene development build: zero errors. Final role logs contain no managed exceptions or scene-spawn failures. Cube/smoke and transition renders visually inspected; blank transition frame verified entirely black.
+- Evidence: Logs/LaterNightsVerification.json, Logs/FinalSweep-*.log, Logs/LaterNights*Result.txt and transition PNGs. Repro tooling: LaterNightChecks; StalkerNetworkTest; LaterNightTransferTest. Details and remaining manual Relay/audio checks: Assets/_Project/LaterNights.md. Current new gameplay inputs match the verified checkout byte-for-byte.
+
 ## Fresh pre-playtest audit (2026-11-03)
 
 - Current-source development audit build and normal Windows release build both succeeded with zero errors. Release output: Logs/PlaytestRelease/Red Sand.exe. The release scene list excludes generated test scenes, and the development-only audit bootstrap is excluded.

@@ -132,6 +132,7 @@ public class NightTimeManager : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (!IsNetworkSessionActive())
         {
             UpdateLocalNightProgress();
@@ -214,7 +215,7 @@ public class NightTimeManager : NetworkBehaviour
         // The final authored level can leave its destination empty.
         if (string.IsNullOrWhiteSpace(nextSceneName))
         {
-            Debug.Log("[Night Manager] Night complete; no next level configured.");
+            StartCoroutine(CompleteCampaign());
             return;
         }
         if (!Application.CanStreamedLevelBeLoaded(nextSceneName))
@@ -232,7 +233,7 @@ public class NightTimeManager : NetworkBehaviour
         else
         {
             var player = FindObjectOfType<OxygenSystem>();
-            if (player != null && !player.IsDead()) SceneManager.LoadScene(nextSceneName);
+            if (player != null && !player.IsDead()) StartCoroutine(NightTransition.Instance.CompleteOffline(nextSceneName, true));
         }
     }
 
@@ -243,6 +244,13 @@ public class NightTimeManager : NetworkBehaviour
         CurrentMinute = minute;
         NightProgress = progress;
         Debug.Log($"<color=yellow>[Night Manager]</color> Hour advanced to {hour}:{minute:00} on client.");
+    }
+
+    private System.Collections.IEnumerator CompleteCampaign()
+    {
+        yield return NightTransition.Instance.CoverForLoad("MainMenu", true);
+        if (IsNetworkSessionActive()) NightTransition.Instance.ReturnPartyToMenu();
+        else SceneManager.LoadScene("MainMenu");
     }
 
     int CalculateTotalHours()

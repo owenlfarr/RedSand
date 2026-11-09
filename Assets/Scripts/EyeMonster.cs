@@ -94,6 +94,7 @@ public sealed class EyeMonster : NetworkBehaviour
     bool Alive(NetworkObject player) => player!=null && player.IsSpawned && player.TryGetComponent<NetworkOxygenState>(out var life) && !life.IsDead.Value;
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if(ActiveSession)
         {
             if(!IsSpawned)return;

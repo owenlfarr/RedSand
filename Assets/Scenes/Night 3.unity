@@ -23849,6 +23849,12 @@ MonoBehaviour:
     m_InternalValue: -999
   IsOnCooldownNetwork:
     m_InternalValue: 0
+  UsesRemainingNetwork:
+    m_InternalValue: 0
+  MaintenanceOwnerNetwork:
+    m_InternalValue: 18446744073709551615
+  MaintenanceProgressNetwork:
+    m_InternalValue: 0
 --- !u!4 &801880035
 Transform:
   m_ObjectHideFlags: 0
@@ -43282,6 +43288,10 @@ MonoBehaviour:
   lungeSpeed: 32
   windupSeconds: 0.35
   recoverySeconds: 1.25
+  roamSpeed: 2
+  roamRadius: 25
+  searchRadius: 8
+  lungeSound: {fileID: 0}
   Position:
     m_InternalValue: {x: 0, y: 0, z: 0}
   Yaw:
@@ -57134,7 +57144,7 @@ MonoBehaviour:
   endHour: 8
   useCustomEndingTime: 0
   endingSequenceTriggerTime: 900
-  nextSceneName: 
+  nextSceneName: Night 4
   difficultyIncreasePerHour: 0.02
   CurrentHourNetwork:
     m_InternalValue: 0

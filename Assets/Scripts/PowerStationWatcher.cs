@@ -102,6 +102,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (!NetworkActive)
         {
             // Never restart local AI after a multiplayer disconnect/scene teardown.
@@ -246,6 +247,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
 
     void FailEncounter(NetworkObject player)
     {
+        if (NightTransition.BlocksGameplay) return;
         if (!IsServer || !IsEligible(player)) return;
         // Death remains authoritative; only the victim receives the timed presentation.
         var oxygen = player.GetComponent<NetworkOxygenState>();

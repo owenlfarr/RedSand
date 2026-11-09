@@ -6,7 +6,7 @@ using TMPro;
 public static class RadarWearRules
 {
     public static int NightNumber(string scene){var match=System.Text.RegularExpressions.Regex.Match(scene??"",@"^Night\s*(\d+)");return match.Success&&int.TryParse(match.Groups[1].Value,out int n)?Mathf.Max(1,n):1;}
-    public static int Capacity(int night)=>Mathf.Max(1,20-2*Mathf.Clamp(night,1,1000));
+    public static int Capacity(int night)=>night>=4?12:Mathf.Max(1,20-2*Mathf.Clamp(night,1,1000));
     public static int MetalCost(int night)=>night<=4?10:15;
 }
 

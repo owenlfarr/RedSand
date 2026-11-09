@@ -24,7 +24,9 @@ public class GameIntro : MonoBehaviour
 
     void Start()
     {
-        if (blackScreenImage == null)
+        bool managed = NightTransition.IsNightScene(gameObject.scene.name);
+        if (managed) { if (blackScreenImage != null) blackScreenImage.gameObject.SetActive(false); blackScreenImage = null; blackFadeDuration = 0; }
+        if (blackScreenImage == null && !managed)
         {
             GameObject canvas = GameObject.Find("GameUICanvas");
             if (canvas != null)

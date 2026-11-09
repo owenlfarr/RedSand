@@ -90,6 +90,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);rockVisuals.Clear();
     }
     void Update(){
+        if (NightTransition.BlocksGameplay) return;
         if(Online){if(!IsSpawned)return;if(!IsServer){phase=(Phase)State.Value;transform.SetPositionAndRotation(Vector3.Lerp(transform.position,Position.Value,1-Mathf.Exp(-25*Time.deltaTime)),Quaternion.Euler(0,Yaw.Value,0));return;}}
         else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();InitializeRoaming();heartbeat.Play();offlineReady=true;}}
         ObserveMovement();TickFlights();TickMovement();
@@ -174,6 +175,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         lastPositions[id]=pos;
     }
     void OnControllerColliderHit(ControllerColliderHit hit){
+        if (NightTransition.BlocksGameplay) return;
         if(!Authority||phase!=Phase.Lunging)return;
         var player=hit.collider.GetComponentInParent<PlayerController>();if(player==null)return;
         if(Online){var obj=player.GetComponent<NetworkObject>();if(!Living(obj))return;var life=player.GetComponent<NetworkOxygenState>();life.UseBlackDeathIntro.Value=false;life.IsDead.Value=true;KillOwnerClientRpc(new ClientRpcParams{Send=new ClientRpcSendParams{TargetClientIds=new[]{obj.OwnerClientId}}});}

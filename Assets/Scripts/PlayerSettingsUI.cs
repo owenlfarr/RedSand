@@ -28,7 +28,7 @@ public sealed class PlayerSettingsUI : MonoBehaviour
     private int frameCount, previousWidth, previousHeight;
     private FullScreenMode previousMode;
     private GameObject gameMenu, gameSettings, gameHome;
-    public static bool IsGameMenuOpen => instance != null && instance.gameMenu != null && instance.gameMenu.activeSelf;
+    public static bool IsGameMenuOpen => NightTransition.BlocksGameplay || (instance != null && instance.gameMenu != null && instance.gameMenu.activeSelf);
 
     private bool IsGameplayScene() => NightTimeManager.Instance != null ||
         SceneManager.GetActiveScene().name.StartsWith("Night", System.StringComparison.OrdinalIgnoreCase);

@@ -17,6 +17,7 @@ namespace Networking
         private bool transferring;
         private bool hasRoster;
         private Coroutine spawnRoutine;
+        private Coroutine loadRoutine;
         private readonly ContinuousNightRun continuousRun = new ContinuousNightRun();
         private string sourceScene;
         private string initialScene;
@@ -80,6 +81,14 @@ namespace Networking
             Debug.Log($"[Level Progression] Loading {sceneName} for {survivors.Count} survivor(s).");
             manager.SceneManager.OnLoadEventCompleted += OnLevelLoaded;
             if (NetworkGameState.Instance != null) NetworkGameState.Instance.SetRestartInProgress(true);
+            loadRoutine = StartCoroutine(LoadCovered(sceneName));
+        }
+
+        private IEnumerator LoadCovered(string sceneName)
+        {
+            yield return NightTransition.Instance.CoverForLoad(sceneName, NightTransition.IsNightScene(sourceScene));
+            loadRoutine = null;
+            if (manager == null || !manager.IsListening || !manager.IsServer) { NightTransition.Instance.Cancel(); yield break; }
             var status = manager.SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
             if (status != SceneEventProgressStatus.Started)
             {
@@ -87,6 +96,7 @@ namespace Networking
                 transferring = false;
                 hasRoster = false;
                 if (NetworkGameState.Instance != null) NetworkGameState.Instance.SetRestartInProgress(false);
+                NightTransition.Instance.Cancel();
                 Debug.LogError($"[Level Progression] Could not load {sceneName}: {status}");
             }
         }
@@ -138,6 +148,7 @@ namespace Networking
             }
             transferring = false;
             spawnRoutine = null;
+            NightTransition.Instance.ReleaseAfterLoad(destination);
         }
 
         private void Update()
@@ -160,7 +171,8 @@ namespace Networking
                 if (manager.SceneManager != null)
                     manager.SceneManager.OnLoadEventCompleted -= OnLevelLoaded;
                 if (spawnRoutine != null) StopCoroutine(spawnRoutine);
-                spawnRoutine = null;
+                if (loadRoutine != null) StopCoroutine(loadRoutine);
+                spawnRoutine = loadRoutine = null;
                 continuousRun.Reset();
                 awaitingInitialScene = false;
                 hasRoster = false;

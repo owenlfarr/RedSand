@@ -76,6 +76,7 @@ public class PlayerDeathSpectator : MonoBehaviour
 
     private void OnDestroy()
     {
+        StopAllCoroutines();
         RestoreDeathAudio();
         ClearSpectateCamera();
         if (overlayCanvas != null) Destroy(overlayCanvas.gameObject);
@@ -636,6 +637,8 @@ public class PlayerDeathSpectator : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < fadeDuration)
         {
+            // The scene-root overlay can unload before NGO destroys its owning player.
+            if (blackOverlay == null) yield break;
             elapsed += Time.unscaledDeltaTime;
             float t = fadeDuration <= 0f ? 1f : Mathf.Clamp01(elapsed / fadeDuration);
             Color color = blackOverlay.color;

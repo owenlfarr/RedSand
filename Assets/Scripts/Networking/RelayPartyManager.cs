@@ -775,12 +775,22 @@ namespace Networking
             var progression=nm.GetComponent<NetworkLevelProgression>();
             if(progression==null)progression=nm.gameObject.AddComponent<NetworkLevelProgression>();
             progression.BeginCampaign(multiplayerSceneName);
-            var loadStatus = nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
-            if (loadStatus == SceneEventProgressStatus.Started) return true;
+            StartCoroutine(LoadStartingNightCovered(nm, multiplayerSceneName));
+            return true;
+        }
+
+        private IEnumerator LoadStartingNightCovered(NetworkManager nm, string scene)
+        {
+            yield return NightTransition.Instance.CoverForLoad(scene, false);
+            if (nm == null || !nm.IsListening || !nm.IsHost) { NightTransition.Instance.Cancel(); yield break; }
+            var loadStatus = nm.SceneManager.LoadScene(scene, LoadSceneMode.Single);
+            if (loadStatus == SceneEventProgressStatus.Started) yield break;
             nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
+            matchStarted = false;
+            NightTransition.Instance.Cancel();
             statusText = $"Could not start game: {loadStatus}";
+            if (lobbyBrowser != null) _ = lobbyBrowser.RestoreAfterFailedStart();
             RefreshLobbyCodeUI();
-            return false;
         }
 
         private bool RestoreGamePlayerPrefab(NetworkManager nm)
@@ -865,6 +875,7 @@ namespace Networking
             yield return null;
             NetworkGameState.Instance?.RefreshPlayerCounts();
             spawnPlayersAfterLoadCoroutine = null;
+            NightTransition.Instance.ReleaseAfterLoad(multiplayerSceneName);
         }
 
         private void ApplyManualSpawnPoint(Transform playerTransform)

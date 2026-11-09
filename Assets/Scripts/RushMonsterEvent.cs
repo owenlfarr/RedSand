@@ -176,6 +176,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (IsNetworkSessionActive() && !IsSpawned) return;
         if (playerTransform == null || oxygenSystem == null)
         {
@@ -739,6 +740,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     void KillPlayerLocal(bool restartScene)
     {
+        if (NightTransition.BlocksGameplay) return;
         if (!IsLocalPlayerInBunker())
         {
             return;
@@ -887,6 +889,7 @@ public class RushMonsterEvent : NetworkBehaviour
 
     private void MarkClientDeadServer(ulong clientId)
     {
+        if (NightTransition.BlocksGameplay) return;
         if (!IsServer || NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var client) || client.PlayerObject == null)
         {
             return;

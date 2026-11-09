@@ -25,6 +25,8 @@ public sealed class PAScreecher : MonoBehaviour
     void Awake()
     {
         clock=GetComponent<NightTimeManager>();
+        int night=RadarWearRules.NightNumber(gameObject.scene.name);
+        if(night>=4)eventChance=Mathf.Clamp01(eventChance+.01f*Mathf.Min(2,night-3));
         source=gameObject.AddComponent<AudioSource>();
         source.playOnAwake=false;source.loop=true;source.spatialBlend=0;
         source.ignoreListenerVolume=true;source.priority=20;

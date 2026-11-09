@@ -324,6 +324,7 @@ public class ZombieAI : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         bool networkActive = IsNetworkSessionActive();
         bool isSpawnedReplica = networkActive && IsSpawned;
 
@@ -863,6 +864,7 @@ public class ZombieAI : NetworkBehaviour
 
     void OnControllerColliderHit(ControllerColliderHit hit)
     {
+        if (NightTransition.BlocksGameplay) return;
         if (hasKilledPlayer)
         {
             return;

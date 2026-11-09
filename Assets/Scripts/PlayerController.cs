@@ -161,6 +161,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         RecoverFromMapFall();
         if (PlayerSettingsUI.IsGameMenuOpen && movementState != null && IsSpawned && IsOwner)
         {

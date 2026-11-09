@@ -31,9 +31,9 @@ using Unity.Netcode.Transports.UTP;
  [ServerRpc(RequireOwnership=false)]void ReportServerRpc(int uses,int metal,ServerRpcParams rpc=default){reports[rpc.Receive.SenderClientId]=new Vector2Int(uses,metal);}
  void Funds(int amount){var stock=NetworkManager.GetComponent<DrillSessionStockpile>();var value=stock.Materials;value.Metal=amount;stock.Materials=value;}
  IEnumerator Run(){
-  foreach(int n in Enumerable.Range(1,6))Check(RadarWearRules.Capacity(n)==20-2*n,"night "+n+" scan capacity");
+  foreach(int n in Enumerable.Range(1,6))Check(RadarWearRules.Capacity(n)==(n>=4?12:20-2*n),"night "+n+" scan capacity");
   Check(RadarWearRules.MetalCost(1)==10&&RadarWearRules.MetalCost(4)==10&&RadarWearRules.MetalCost(5)==15&&RadarWearRules.MetalCost(6)==15,"repair price switches after night four");
-  Check(RadarWearRules.NightNumber("Night1_MultiplayerTest")==1&&RadarWearRules.NightNumber("Night 3")==3&&RadarWearRules.Capacity(999)==1,"legacy names and late-night minimum");
+  Check(RadarWearRules.NightNumber("Night1_MultiplayerTest")==1&&RadarWearRules.NightNumber("Night 3")==3&&RadarWearRules.Capacity(999)==12,"legacy names and later-night twelve-scan limit");
   yield return Wait(()=>NetworkManager.ConnectedClientsList.Count>=2,"client joins",25);yield return new WaitForSeconds(.5f);
   var client=NetworkManager.ConnectedClientsList.First(c=>c.ClientId!=NetworkManager.LocalClientId);Funds(12);
   Check(radar.UsesRemaining==18,"starts with full uses");Stage.Value=1;yield return new WaitForSeconds(.5f);Check(radar.UsesRemaining==17,"successful scan spends one use; cooldown rejection spends none");

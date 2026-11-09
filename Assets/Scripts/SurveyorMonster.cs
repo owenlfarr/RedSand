@@ -150,6 +150,7 @@ public class SurveyorMonster : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (playerTransform == null)
         {
             RefreshLocalPlayerReference();

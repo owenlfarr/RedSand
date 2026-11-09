@@ -134,6 +134,7 @@ public class OxygenSystem : NetworkBehaviour
 
     void Update()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (IsNetworkSessionActive() && !IsSpawned) return;
         if (!IsNetworkSessionActive())
         {
@@ -489,6 +490,7 @@ public class OxygenSystem : NetworkBehaviour
 
     public void MarkDeadFromMonster()
     {
+        if (NightTransition.BlocksGameplay) return;
         if (IsNetworkSessionActive())
         {
             if (IsServer && oxygenState != null)
