@@ -3,6 +3,8 @@ using Unity.Netcode;
 
 public class NetworkPlayerMovementState : NetworkBehaviour
 {
+    public NetworkVariable<int> CarriedDistractionRocks = new NetworkVariable<int>();
+
     public NetworkVariable<Vector2> MoveInput = new NetworkVariable<Vector2>(
         Vector2.zero,
         NetworkVariableReadPermission.Everyone,

@@ -26,6 +26,7 @@ namespace Networking
         private string currentChannel = string.Empty;
         private string currentRadioChannel = string.Empty;
         private float nextPositionSyncTime;
+        private float nextMonsterSpeech;
         private float nextRadioStationScanTime;
         private bool wantsRadioBroadcast;
         private bool radioBroadcasting;
@@ -57,7 +58,12 @@ namespace Networking
         {
             TryAttachRadioStationToSceneObject();
             ApplyReviveMute();
-
+            if(initialized&&loggedIn&&!reviveMuted&&!paMuted&&Time.time>=nextMonsterSpeech&&BlindLungeMonster.Instance!=null){
+                nextMonsterSpeech=Time.time+.6f;
+                foreach(var channel in VivoxService.Instance.ActiveChannels.Values)
+                foreach(var participant in channel)if(participant.IsSelf&&participant.SpeechDetected&&!participant.IsMuted){BlindLungeMonster.Instance.ReportLocalSpeech();goto SpeechChecked;}
+            }
+            SpeechChecked:
             if (!useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentChannel))
             {
                 return;
@@ -259,7 +265,7 @@ namespace Networking
         private bool radioStartPending;
         public async void BeginRadioBroadcast()
         {
-            if (reviveMuted) return;
+            if (reviveMuted || paMuted) return;
             wantsRadioBroadcast = true;
             if (radioStartPending) return;
             radioStartPending = true;
@@ -270,7 +276,7 @@ namespace Networking
 
         private async Task BeginRadioBroadcastCoreAsync()
         {
-            if (!wantsRadioBroadcast || reviveMuted || !useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentRadioChannel) || radioBroadcasting)
+            if (!wantsRadioBroadcast || reviveMuted || paMuted || !useProximityVoice || !initialized || !loggedIn || string.IsNullOrEmpty(currentRadioChannel) || radioBroadcasting)
             {
                 return;
             }
@@ -278,7 +284,7 @@ namespace Networking
             try
             {
                 await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, currentRadioChannel);
-                if ((!wantsRadioBroadcast || reviveMuted) && !string.IsNullOrEmpty(currentChannel))
+                if ((!wantsRadioBroadcast || reviveMuted || paMuted) && !string.IsNullOrEmpty(currentChannel))
                 {
                     await VivoxService.Instance.SetChannelTransmissionModeAsync(TransmissionMode.Single, currentChannel);
                     radioBroadcasting = false;
@@ -409,27 +415,25 @@ namespace Networking
             radioObject.AddComponent<global::RadioBroadcastStation>();
             Debug.Log("[VoiceChat] Radio broadcast station attached to scene object named Radio.");
         }
-        private bool reviveMuted, capturedMuteState, previousInputMute, previousOutputMute;
+        private bool reviveMuted, paMuted, capturedMuteState, previousInputMute, previousOutputMute;
         public bool ReviveMuted => reviveMuted;
-        public void SetReviveMuted(bool value)
+        public bool PAScreecherMuted => paMuted;
+        public void SetReviveMuted(bool value) { if(reviveMuted==value)return; reviveMuted=value; RefreshMuteState(); }
+        public void SetPAScreecherMuted(bool value) { if(paMuted==value)return; paMuted=value; RefreshMuteState(); }
+        private void RefreshMuteState()
         {
-            if (value) { reviveMuted = true; EndRadioBroadcast(); ApplyReviveMute(); return; }
-            if (!reviveMuted) return;
-            reviveMuted = false;
-            if (capturedMuteState && initialized)
-            {
-                try
-                {
-                    if (previousInputMute) VivoxService.Instance.MuteInputDevice(); else VivoxService.Instance.UnmuteInputDevice();
-                    if (previousOutputMute) VivoxService.Instance.MuteOutputDevice(); else VivoxService.Instance.UnmuteOutputDevice();
-                }
-                catch (Exception ex) { Debug.LogWarning("[VoiceChat] Restore revive audio failed: " + ex.Message); }
+            if(reviveMuted || paMuted){EndRadioBroadcast();ApplyReviveMute();return;}
+            if(capturedMuteState && initialized){
+                try {
+                    if(previousInputMute)VivoxService.Instance.MuteInputDevice();else VivoxService.Instance.UnmuteInputDevice();
+                    if(previousOutputMute)VivoxService.Instance.MuteOutputDevice();else VivoxService.Instance.UnmuteOutputDevice();
+                }catch(Exception ex){Debug.LogWarning("[VoiceChat] Restore audio failed: "+ex.Message);}
             }
-            capturedMuteState = false;
+            capturedMuteState=false;
         }
         private void ApplyReviveMute()
         {
-            if (!reviveMuted || !initialized) return;
+            if ((!reviveMuted && !paMuted) || !initialized) return;
             try
             {
                 if (!capturedMuteState)

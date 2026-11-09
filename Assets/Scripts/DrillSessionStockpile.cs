@@ -13,6 +13,11 @@ public sealed class DrillSessionStockpile : MonoBehaviour
         get => materials;
         internal set { if (materials.Equals(value)) return; materials = value; Changed?.Invoke(value); }
     }
+    public bool TrySpendMetal(int amount)
+    {
+        if(manager==null || !manager.IsServer || amount<=0 || materials.Metal<amount)return false;
+        var state=materials;state.Metal-=amount;Materials=state;return true;
+    }
     public bool TrySpendPlasma()
     {
         if (manager == null || !manager.IsServer || materials.Plasma < 1) return false;

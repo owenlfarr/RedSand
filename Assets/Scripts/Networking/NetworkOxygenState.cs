@@ -47,7 +47,10 @@ public class NetworkOxygenState : NetworkBehaviour
     {
         if (!IsServer) return;
         if (current && TryGetComponent<NetworkPlayerMovementState>(out var movement))
+        {
             movement.MovementEnabled.Value = false;
+            movement.CarriedDistractionRocks.Value = 0;
+        }
         NetworkGameState.Instance?.RefreshPlayerCounts();
     }
 

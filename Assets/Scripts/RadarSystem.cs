@@ -41,6 +41,26 @@ public class RadarSystem : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
+    public NetworkVariable<int> UsesRemainingNetwork = new NetworkVariable<int>();
+    public NetworkVariable<ulong> MaintenanceOwnerNetwork = new NetworkVariable<ulong>(ulong.MaxValue);
+    public NetworkVariable<float> MaintenanceProgressNetwork = new NetworkVariable<float>();
+    int offlineUses;
+    ulong offlineRepairOwner=ulong.MaxValue;
+    float offlineRepairProgress,lastRepairHeartbeat;
+    DrillSystem repairDrill;
+    SolarFlareSystem repairStation;
+    public int NightNumber=>RadarWearRules.NightNumber(gameObject.scene.name);
+    public int UseCapacity=>RadarWearRules.Capacity(NightNumber);
+    public int RepairMetalCost=>RadarWearRules.MetalCost(NightNumber);
+    public int UsesRemaining=>IsNetworkSessionActive()?UsesRemainingNetwork.Value:offlineUses;
+    public bool NeedsMaintenance=>UsesRemaining<UseCapacity;
+    public ulong MaintenanceOwner=>IsNetworkSessionActive()?MaintenanceOwnerNetwork.Value:offlineRepairOwner;
+    public float MaintenanceProgress=>IsNetworkSessionActive()?MaintenanceProgressNetwork.Value:offlineRepairProgress;
+    public float MaintenanceSeconds=>repairStation!=null?Mathf.Max(.1f,repairStation.repairTime):5f;
+    public int AvailableRepairMetal {get {ResolveRepairStation();return repairDrill!=null?repairDrill.Current.Metal:0;}}
+    void Awake(){offlineUses=UseCapacity;}
+    void ResolveRepairStation(){if(repairStation==null)repairStation=FindFirstObjectByType<SolarFlareSystem>();if(repairDrill==null)repairDrill=FindFirstObjectByType<DrillSystem>();}
+
     private Transform playerTransform;
     private float lastScanTime = -999f;
     private bool isPlayerInRange = false;
@@ -50,6 +70,8 @@ public class RadarSystem : NetworkBehaviour
 
     void Start()
     {
+        if(GetComponent<RadarRepairStation>()==null)gameObject.AddComponent<RadarRepairStation>();
+        ResolveRepairStation();
         RefreshLocalPlayerReference();
 
         if (playerTransform == null && !IsNetworkSessionActive())
@@ -95,6 +117,9 @@ public class RadarSystem : NetworkBehaviour
         base.OnNetworkSpawn();
         if (IsServer)
         {
+            UsesRemainingNetwork.Value=UseCapacity;
+            MaintenanceOwnerNetwork.Value=ulong.MaxValue;
+            MaintenanceProgressNetwork.Value=0;
             LastScanTimeNetwork.Value = lastScanTime;
             IsOnCooldownNetwork.Value = IsOnCooldown();
         }
@@ -105,6 +130,7 @@ public class RadarSystem : NetworkBehaviour
     void Update()
     {
         if (IsNetworkSessionActive() && !IsSpawned) return;
+        if(!IsNetworkSessionActive()||IsServer)TickMaintenance();
         RefreshLocalPlayerReference();
 
         if (playerTransform == null)
@@ -200,7 +226,7 @@ public class RadarSystem : NetworkBehaviour
         {
             if (!IsOnCooldown() && !IsRadarLockedOut())
             {
-                interactionPromptText.text = $"Press {INTERACTION_KEY} to scan radar";
+                interactionPromptText.text = $"Press {INTERACTION_KEY} to scan radar ({UsesRemaining}/{UseCapacity} uses)";
                 interactionPromptText.gameObject.SetActive(true);
             }
             else
@@ -234,8 +260,15 @@ public class RadarSystem : NetworkBehaviour
         HideInteractionPrompt();
     }
 
+    public void RequestScan()
+    {
+        if(IsNetworkSessionActive()){if(IsSpawned)RequestRadarScanServerRpc();}
+        else TryActivateRadarOffline();
+    }
+
     void TryActivateRadarOffline()
     {
+        if(IsRadarLockedOut() || objectiveTransform==null)return;
         if (IsOnCooldown())
         {
             Debug.Log($"<color=yellow>[Radar]</color> Still on cooldown: {GetRemainingCooldown():F1}s remaining");
@@ -247,12 +280,13 @@ public class RadarSystem : NetworkBehaviour
         }
 
         PerformRadarScanOffline();
+        offlineUses=Mathf.Max(0,offlineUses-1);
         lastScanTime = Time.time;
     }
 
     void TryActivateRadarForClient(ulong clientId)
     {
-        if (IsRadarLockedOut()) return;
+        if (IsRadarLockedOut() || objectiveTransform==null) return;
         if (!CanClientScan(clientId))
         {
             RadarResultsClientRpc("Radar scan failed.");
@@ -270,6 +304,7 @@ public class RadarSystem : NetworkBehaviour
         }
 
         PerformRadarScanServer();
+        UsesRemainingNetwork.Value=Mathf.Max(0,UsesRemainingNetwork.Value-1);
         lastScanTime = GetCooldownClockTime();
         LastScanTimeNetwork.Value = lastScanTime;
         IsOnCooldownNetwork.Value = true;
@@ -511,10 +546,14 @@ public class RadarSystem : NetworkBehaviour
             return;
         }
 
+        if(UsesRemaining<=0){
+            cooldownText.text=$"RADAR WORN OUT / 0/{UseCapacity} uses\nRepair at solar station: {RepairMetalCost} metal";
+            cooldownText.color=new Color(1,.35f,.25f);cooldownText.gameObject.SetActive(true);return;
+        }
         if (IsOnCooldown())
         {
             float remaining = GetRemainingCooldown();
-            cooldownText.text = $"Radar: {remaining:F1}s";
+            cooldownText.text = $"Radar: {remaining:F1}s / {UsesRemaining}/{UseCapacity} uses";
             cooldownText.color = new Color(0f, 0.8f, 1f);
             cooldownText.fontSize = 18;
             cooldownText.fontStyle = TMPro.FontStyles.Bold;
@@ -523,7 +562,8 @@ public class RadarSystem : NetworkBehaviour
         }
         else
         {
-            cooldownText.gameObject.SetActive(false);
+            cooldownText.text=$"Radar: {UsesRemaining}/{UseCapacity} uses";
+            cooldownText.color=Color.white;cooldownText.gameObject.SetActive(true);
         }
     }
 
@@ -550,8 +590,8 @@ public class RadarSystem : NetworkBehaviour
     bool IsRadarLockedOut()
     {
         bool powerOut = PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut;
-        bool flareActive = SolarFlareSystem.Instance != null && SolarFlareSystem.Instance.IsFlareActiveNetwork.Value;
-        return powerOut || flareActive;
+        bool flareActive = SolarFlareSystem.Instance != null && SolarFlareSystem.Instance.IsFlareActive;
+        return powerOut || flareActive || UsesRemaining<=0;
     }
 
     bool IsNetworkSessionActive()
@@ -572,6 +612,62 @@ public class RadarSystem : NetworkBehaviour
     void SyncLocalStateFromNetwork()
     {
         lastScanTime = LastScanTimeNetwork.Value;
+    }
+
+    public bool CanRepairAtStation(PlayerController player)
+    {
+        ResolveRepairStation();
+        if(player==null||!player.enabled||!player.gameObject.activeInHierarchy||repairStation==null||repairStation.fixPointTransform==null||repairStation.IsFlareActive)return false;
+        if(IsNetworkSessionActive()){
+            var life=player.GetComponent<NetworkOxygenState>();var movement=player.GetComponent<NetworkPlayerMovementState>();
+            if(life==null||life.IsDead.Value||movement!=null&&!movement.MovementEnabled.Value)return false;
+        }else if(player.GetComponent<OxygenSystem>()?.IsDead()==true)return false;
+        return Vector3.Distance(player.transform.position,repairStation.fixPointTransform.position)<=repairStation.interactionDistance;
+    }
+    public void RequestMaintenance(bool held)
+    {
+        if(IsNetworkSessionActive()){if(IsSpawned)MaintainServerRpc(held);}
+        else {
+            RefreshLocalPlayerReference();
+            SetMaintenance(0,playerTransform!=null?playerTransform.GetComponent<PlayerController>():null,held);
+        }
+    }
+    [ServerRpc(RequireOwnership=false)]void MaintainServerRpc(bool held,ServerRpcParams rpc=default)
+    {
+        if(!IsServer)return;
+        ulong id=rpc.Receive.SenderClientId;
+        var player=NetworkManager.ConnectedClients.TryGetValue(id,out var peer)&&peer.PlayerObject!=null?peer.PlayerObject.GetComponent<PlayerController>():null;
+        SetMaintenance(id,player,held);
+    }
+    void SetMaintenance(ulong id,PlayerController player,bool held)
+    {
+        if(!held){if(MaintenanceOwner==id)CancelMaintenance();return;}
+        if(!CanRepairAtStation(player)||!NeedsMaintenance||AvailableRepairMetal<RepairMetalCost)return;
+        if(MaintenanceOwner!=ulong.MaxValue&&MaintenanceOwner!=id)return;
+        if(IsNetworkSessionActive())MaintenanceOwnerNetwork.Value=id;else offlineRepairOwner=id;
+        lastRepairHeartbeat=Time.time;
+    }
+    void CancelMaintenance()
+    {
+        if(IsNetworkSessionActive()){MaintenanceOwnerNetwork.Value=ulong.MaxValue;MaintenanceProgressNetwork.Value=0;}
+        else {offlineRepairOwner=ulong.MaxValue;offlineRepairProgress=0;}
+    }
+    void TickMaintenance()
+    {
+        if(MaintenanceOwner==ulong.MaxValue)return;
+        PlayerController player=null;
+        if(IsNetworkSessionActive()){
+            if(NetworkManager.ConnectedClients.TryGetValue(MaintenanceOwner,out var peer)&&peer.PlayerObject!=null)player=peer.PlayerObject.GetComponent<PlayerController>();
+        }else {RefreshLocalPlayerReference();player=playerTransform!=null?playerTransform.GetComponent<PlayerController>():null;}
+        if(Time.time-lastRepairHeartbeat>.65f||!CanRepairAtStation(player)||!NeedsMaintenance||AvailableRepairMetal<RepairMetalCost){CancelMaintenance();return;}
+        float progress=MaintenanceProgress+Time.deltaTime;
+        if(IsNetworkSessionActive())MaintenanceProgressNetwork.Value=progress;else offlineRepairProgress=progress;
+        if(progress<MaintenanceSeconds)return;
+        // Atomic host-side debit: two repairers cannot spend twice or repair for free.
+        if(repairDrill!=null&&repairDrill.TrySpendMetal(RepairMetalCost)){
+            if(IsNetworkSessionActive())UsesRemainingNetwork.Value=UseCapacity;else offlineUses=UseCapacity;
+        }
+        CancelMaintenance();
     }
 
     void OnDrawGizmosSelected()

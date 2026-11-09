@@ -119,6 +119,12 @@ public sealed class DrillSystem : NetworkBehaviour
         }
         else { offline = state; RefreshScreen(); }
     }
+    public bool TrySpendMetal(int amount)
+    {
+        if(!Authority || amount<=0 || Current.Metal<amount)return false;
+        if(Online)return stockpile!=null && stockpile.TrySpendMetal(amount);
+        var state=offline;state.Metal-=amount;Commit(state);return true;
+    }
     public void StopDrilling()
     {
         if (!Authority) return;

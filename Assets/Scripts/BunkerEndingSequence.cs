@@ -108,12 +108,13 @@ public class BunkerEndingSequence : NetworkBehaviour
         BuildFadeCanvas();
     }
 
-    void OnDestroy()
+    public override void OnDestroy()
     {
         if (IsActive)
         {
             IsActive = false;
         }
+        base.OnDestroy();
     }
 
     public override void OnNetworkSpawn()
@@ -441,3 +442,5 @@ public class BunkerEndingSequence : NetworkBehaviour
         }
     }
 }
+
+

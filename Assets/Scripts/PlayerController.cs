@@ -96,6 +96,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Start()
     {
+        if (GetComponent<RockThrower>() == null) gameObject.AddComponent<RockThrower>();
         if (GetComponent<BunkerTablet>() == null) gameObject.AddComponent<BunkerTablet>();
         if (GetComponent<FirstPersonHeadVisibility>() == null) gameObject.AddComponent<FirstPersonHeadVisibility>();
         controller = GetComponent<CharacterController>();

@@ -17,11 +17,25 @@ namespace Networking
         private bool transferring;
         private bool hasRoster;
         private Coroutine spawnRoutine;
+        private readonly ContinuousNightRun continuousRun = new ContinuousNightRun();
+        private string sourceScene;
+        private string initialScene;
+        private bool awaitingInitialScene;
+        public void BeginCampaign(string startScene) {continuousRun.Begin(startScene);initialScene=startScene;awaitingInitialScene=true;}
+        public static bool ShouldResetCampaign(bool listening, bool inMenu, bool awaitingScene)
+            => !listening || (inMenu && !awaitingScene);
+        private void ObserveSceneLoad(Scene scene,LoadSceneMode mode)
+        {
+            if(!scene.name.StartsWith("Night"))return;
+            if(awaitingInitialScene && scene.name==initialScene){awaitingInitialScene=false;return;}
+            if(!transferring)continuousRun.Reset();
+        }
 
         private void Awake()
         {
             Instance = this;
             manager = GetComponent<NetworkManager>();
+            SceneManager.sceneLoaded += ObserveSceneLoad;
         }
 
         public bool IsEliminated(ulong clientId) => hasRoster && !survivors.Contains(clientId);
@@ -59,6 +73,7 @@ namespace Networking
             }
 
             pendingDestination = null;
+            sourceScene = SceneManager.GetActiveScene().name;
             destination = sceneName;
             hasRoster = true;
             transferring = true;
@@ -80,6 +95,8 @@ namespace Networking
             List<ulong> completed, List<ulong> timedOut)
         {
             if (sceneName != destination) return;
+            bool hostSurvived=manager.IsHost && survivors.Contains(manager.LocalClientId) && completed.Contains(manager.LocalClientId);
+            if(continuousRun.Arrive(sourceScene,sceneName,hostSurvived)) NightStartUnlock.Grant();
             Debug.Log($"[Level Progression] {sceneName} network load completed: {completed.Count} ready, {timedOut.Count} timed out.");
             manager.SceneManager.OnLoadEventCompleted -= OnLevelLoaded;
             foreach (ulong clientId in timedOut)
@@ -125,6 +142,10 @@ namespace Networking
 
         private void Update()
         {
+            if(manager!=null && manager.IsHost && manager.LocalClient?.PlayerObject!=null){
+                var life=manager.LocalClient.PlayerObject.GetComponent<NetworkOxygenState>();
+                if(life!=null && life.IsDead.Value)continuousRun.Reset();
+            }
             if (manager != null && manager.IsServer && manager.IsListening && !transferring &&
                 pendingDestination != null && manager.GetComponent<ReviveSession>()?.Current.Active != true)
             {
@@ -133,12 +154,15 @@ namespace Networking
                 TransferToLevel(next);
             }
             // A new party or a return to the menu starts a fresh campaign roster.
-            if (manager != null && (!manager.IsListening || SceneManager.GetActiveScene().name == "MainMenu"))
+            if (manager != null && ShouldResetCampaign(manager.IsListening,
+                SceneManager.GetActiveScene().name == "MainMenu", awaitingInitialScene))
             {
                 if (manager.SceneManager != null)
                     manager.SceneManager.OnLoadEventCompleted -= OnLevelLoaded;
                 if (spawnRoutine != null) StopCoroutine(spawnRoutine);
                 spawnRoutine = null;
+                continuousRun.Reset();
+                awaitingInitialScene = false;
                 hasRoster = false;
                 pendingDestination = null;
                 survivors.Clear();
@@ -148,6 +172,7 @@ namespace Networking
 
         private void OnDestroy()
         {
+            SceneManager.sceneLoaded -= ObserveSceneLoad;
             if (manager != null && manager.SceneManager != null)
                 manager.SceneManager.OnLoadEventCompleted -= OnLevelLoaded;
             if (Instance == this) Instance = null;

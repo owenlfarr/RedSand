@@ -1,0 +1,16 @@
+{
+    "entries": [
+        {
+            "scene": "Assets/Scenes/Night 1.unity",
+            "custom": false,
+            "duration": 900.0,
+            "next": "MainMenu"
+        },
+        {
+            "scene": "Assets/Scenes/Night1_MultiplayerTest.unity",
+            "custom": false,
+            "duration": 900.0,
+            "next": "Night 2"
+        }
+    ]
+}

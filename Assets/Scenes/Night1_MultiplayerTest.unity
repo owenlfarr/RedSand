@@ -43315,12 +43315,12 @@ Terrain:
   m_Enabled: 1
   serializedVersion: 6
   m_TerrainData: {fileID: 15600000, guid: c90d833dd483629469f13b6ad000be3c, type: 2}
-  m_TreeDistance: 5000
-  m_TreeBillboardDistance: 50
-  m_TreeCrossFadeLength: 5
+  m_TreeDistance: 181
+  m_TreeBillboardDistance: 2000
+  m_TreeCrossFadeLength: 9
   m_TreeMaximumFullLODCount: 50
   m_DetailObjectDistance: 80
-  m_DetailObjectDensity: 1
+  m_DetailObjectDensity: 0.052
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
   m_HeightmapMinimumLODSimplification: 0
@@ -56297,8 +56297,8 @@ MonoBehaviour:
   secondsPerHour: 90
   startHour: 22
   endHour: 8
-  useCustomEndingTime: 0
-  endingSequenceTriggerTime: 900
+  useCustomEndingTime: 1
+  endingSequenceTriggerTime: 5
   nextSceneName: Night 2
   difficultyIncreasePerHour: 0.02
   CurrentHourNetwork:

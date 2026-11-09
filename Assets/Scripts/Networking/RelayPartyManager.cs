@@ -66,6 +66,7 @@ namespace Networking
         [SerializeField] private string statusText = "Idle";
         [SerializeField] private VoiceChatManager voiceChatManager;
 
+        private Button startingNightButton;
         private string joinCodeInput = "";
         private bool isBusy;
         private RelayLobbyBrowser lobbyBrowser;
@@ -159,6 +160,7 @@ namespace Networking
             RegisterLobbyNameMessagesIfReady();
             SendInitialNameAfterClientConnect();
             SyncLocalNameIfNeeded();
+            UpdateStartingNightChoice();
             UpdateMenuAstronautFloating();
             UpdateLobbyAstronautVisuals();
         }
@@ -766,6 +768,10 @@ namespace Networking
                 nm.SceneManager.OnLoadEventCompleted += OnNetworkSceneLoadCompleted;
             }
 
+            multiplayerSceneName = NightStartUnlock.StartingScene;
+            var progression=nm.GetComponent<NetworkLevelProgression>();
+            if(progression==null)progression=nm.gameObject.AddComponent<NetworkLevelProgression>();
+            progression.BeginCampaign(multiplayerSceneName);
             var loadStatus = nm.SceneManager.LoadScene(multiplayerSceneName, LoadSceneMode.Single);
             if (loadStatus == SceneEventProgressStatus.Started) return true;
             nm.SceneManager.OnLoadEventCompleted -= OnNetworkSceneLoadCompleted;
@@ -1478,6 +1484,21 @@ namespace Networking
             {
                 sensitivityValueText.text = rounded.ToString("0.00");
             }
+        }
+
+        private void UpdateStartingNightChoice()
+        {
+            if(startGameButton==null)return;
+            if(startingNightButton==null){
+                var canvas=startGameButton.GetComponentInParent<Canvas>();if(canvas==null)return;
+                startingNightButton=CreateMenuButton(canvas.transform,"StartingNightChoice","Starting night: 1",new Vector2(0,1),new Vector2(320,42),new Vector2(180,-135),TextAlignmentOptions.Center);
+                startingNightButton.onClick.AddListener(()=>{NightStartUnlock.SelectNightTwo(!NightStartUnlock.StartOnNightTwo);UpdateStartingNightChoice();});
+            }
+            bool show=HasActiveHostParty && !matchStarted;
+            startingNightButton.gameObject.SetActive(show);
+            startingNightButton.interactable=NightStartUnlock.IsUnlocked && !isBusy;
+            var label=startingNightButton.GetComponentInChildren<TMP_Text>();
+            if(label!=null)label.text=NightStartUnlock.IsUnlocked?(NightStartUnlock.StartOnNightTwo?"Starting night: 2 (change)":"Starting night: 1 (change)"):"Night 2 start: locked";
         }
 
         private static Button CreateMenuButton(Transform parent, string name, string labelText, Vector2 anchor, Vector2 size, Vector2 position, TextAlignmentOptions alignment)

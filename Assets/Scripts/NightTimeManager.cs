@@ -84,8 +84,11 @@ public class NightTimeManager : NetworkBehaviour
         }
     }
 
+    public NetworkVariable<double> PAScreechEndsAt = new NetworkVariable<double>();
+
     void Start()
     {
+        if (PAScreecher.SupportsNight(gameObject.scene.name)) gameObject.AddComponent<PAScreecher>();
         CrewStressMonitor.Install();
         if (!IsNetworkSessionActive())
         {
