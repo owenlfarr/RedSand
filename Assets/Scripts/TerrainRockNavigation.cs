@@ -147,6 +147,13 @@ public sealed class TerrainRockRoute
         if (sampled && preferred.sqrMagnitude > 0.01f)
             stalled = Vector3.ProjectOnPlane(position - previousPosition, Vector3.up).sqrMagnitude < 0.00001f ? stalled + Time.deltaTime : 0f;
         previousPosition = position; sampled = true;
+        // Navigation is an obstacle-avoidance fallback, not a replacement for
+        // the actor's authored wandering/stalking direction. A route to the
+        // bunker can have many corners even when the next wander step is clear.
+        if (stalled <= 0.8f && preferred.sqrMagnitude > 0.01f &&
+            NavMesh.SamplePosition(position, out var here, 3f, NavMesh.AllAreas) &&
+            !NavMesh.Raycast(here.position, here.position + preferred.normalized * 2f, out _, NavMesh.AllAreas))
+            return preferred;
         if (Time.time >= nextPathTime || (goal - lastGoal).sqrMagnitude > 4f || stalled > 0.8f)
         {
             nextPathTime = Time.time + 0.65f;
@@ -161,12 +168,6 @@ public sealed class TerrainRockRoute
         while (corner < corners.Length && Vector3.ProjectOnPlane(corners[corner] - position, Vector3.up).sqrMagnitude < 0.36f) corner++;
         if (corner >= corners.Length) return Vector3.zero;
         Vector3 direction = Vector3.ProjectOnPlane(corners[corner] - position, Vector3.up).normalized;
-        // Preserve wandering only on an unobstructed corridor. Tight turns use
-        // the route directly rather than smoothing back into the same boulder.
-        if (corner == corners.Length - 1 && preferred.sqrMagnitude > 0.01f &&
-            NavMesh.SamplePosition(position, out var here, 3f, NavMesh.AllAreas) &&
-            !NavMesh.Raycast(here.position, here.position + preferred.normalized * 2f, out _, NavMesh.AllAreas))
-            direction = Vector3.Slerp(direction, preferred.normalized, 0.25f).normalized;
         return direction;
     }
 }

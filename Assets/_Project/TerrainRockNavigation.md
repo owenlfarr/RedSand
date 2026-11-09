@@ -6,7 +6,7 @@ TerrainRockNavigation collects ground/static collision geometry and explicitly a
 
 Navigation builds asynchronously once per loaded gameplay scene. Monsters pause horizontal movement until the surface is ready, avoiding blind movement during generation. The current 4 km terrain took about 16.2 seconds for a synchronous isolated editor test; runtime background timing can differ. Scene destruction cancels pending work and removes the registered navigation data. Editing terrain or rock placement during an already running game requires reloading the level.
 
-Each enemy recalculates its route at most every 0.65 seconds, when the target moves over 2 m, or when stalled. Turns follow path corners; wandering is retained only in a clear final corridor. Partial paths stop at the reachable endpoint rather than pushing through an obstruction. Existing AI target selection, memory, attack timing, defense and transform replication remain in place.
+Each enemy retains its authored wandering direction whenever its next two metres are unobstructed, including when the bunker route has multiple corners. Blocked or stalled movement falls back to path corners. Obstacle routes recalculate at most every 0.65 seconds, when the target moves over 2 m, or when stalled. Partial paths stop at the reachable endpoint rather than pushing through an obstruction. Existing per-night tuning, AI target selection, memory, attack timing, defense and transform replication remain in place.
 
 Validation:
 - Gameplay C# compilation passed against cached Unity 6000.0.32f1 references: Logs/TerrainRockNavigationCheck.dll.

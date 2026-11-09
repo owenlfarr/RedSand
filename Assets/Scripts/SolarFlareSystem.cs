@@ -774,6 +774,9 @@ public class SolarFlareSystem : NetworkBehaviour
 
         Debug.Log("<color=green>[Solar Flare]</color> Repair complete! Systems restored.");
 
+        // A long-running flare can outlast its old check deadline. Give the
+        // repaired station a full interval before another authority-side roll.
+        nextCheckTime = Time.time + checkInterval;
         isFlareActive = false;
         isRepairing = false;
         repairProgress = 0f;
