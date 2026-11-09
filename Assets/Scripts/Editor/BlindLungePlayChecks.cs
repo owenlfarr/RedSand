@@ -39,13 +39,16 @@ using TMPro;
    var result=tool.GetComponentsInChildren<TMP_Text>().FirstOrDefaultText();Require(result,"server search callback did not reach result HUD");
    tool.OfflineCount=1;stageAt=Time.time;stage=3;
   }else if(stage==3&&Time.time-stageAt>.3f){
-   var studio=(GameObject)typeof(RockThrower).GetField("previewRoot",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(tool);
-   Require(studio!=null&&studio.activeInHierarchy,"3D held-rock preview was not visible");
-   var camera=studio.GetComponentInChildren<Camera>();Require(camera!=null&&camera.targetTexture!=null,"preview has no 3D render target");
-   camera.Render();var old=RenderTexture.active;RenderTexture.active=camera.targetTexture;var pixels=new Texture2D(160,160,TextureFormat.RGBA32,false);pixels.ReadPixels(new Rect(0,0,160,160),0,0);pixels.Apply();RenderTexture.active=old;int opaque=0;foreach(var c in pixels.GetPixels32())if(c.a>100)opaque++;UnityEngine.Object.Destroy(pixels);Require(opaque>100,"rock preview rendered empty");
+   var held=(GameObject)typeof(RockThrower).GetField("heldRock",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Instance).GetValue(tool);
+   Require(held!=null&&held.activeInHierarchy,"physical held rock was not visible");
+   Require(held.transform.parent==player.playerCamera,"held rock is not attached to the first-person camera");
+   var mesh=held.GetComponentInChildren<MeshFilter>();Require(mesh!=null&&mesh.sharedMesh!=null,"held rock has no authored 3D mesh");
+   var camera=player.playerCamera.GetComponent<Camera>();Vector3 viewport=camera.WorldToViewportPoint(held.transform.position);
+   Require(viewport.x>.05f&&viewport.x<.3f&&viewport.y>.05f&&viewport.y<.35f&&viewport.z>camera.nearClipPlane,"physical rock is not in the bottom-left view");
+   Require(held.GetComponentInChildren<MeshRenderer>().sharedMaterial.mainTexture!=null,"held rock has no stone texture");
    monster.RequestThrow(player,Vector3.forward+Vector3.up*.4f);Require(tool.Carried==0,"throw did not consume rock");
    Require(GameObject.Find("Thrown small rock")!=null,"throw did not spawn 3D projectile");stageAt=Time.time;stage=4;
-  }else if(stage==4&&Time.time-stageAt>.5f){File.WriteAllText("Logs/BlindLungePlayResult.txt","PASS actual 10m lunge/recovery, ground search and delayed HUD result, visible 3D held-rock preview renders nonempty pixels, throw consumes one rock and spawns projectile. No scene settings were saved.");deadline=0;EditorApplication.isPlaying=false;}
+  }else if(stage==4&&Time.time-stageAt>.5f){File.WriteAllText("Logs/BlindLungePlayResult.txt","PASS actual 10m lunge/recovery, ground search and delayed HUD result, authored physical rock mesh attached to the first-person camera in the bottom left, throw consumes one rock and spawns projectile. No scene settings were saved.");deadline=0;EditorApplication.isPlaying=false;}
 
  }catch(Exception e){File.WriteAllText("Logs/BlindLungePlayResult.txt","FAIL "+e);deadline=0;EditorApplication.isPlaying=false;}}
  static bool FirstOrDefaultText(this TMP_Text[] labels){foreach(var label in labels)if(label.text=="Nothing found"||label.text=="Found one small rock")return true;return false;}

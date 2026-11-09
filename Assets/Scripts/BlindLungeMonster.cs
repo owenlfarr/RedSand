@@ -243,7 +243,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         if(Online)SpawnRockClientRpc(rock,origin,velocity,start);else SpawnRock(rock,origin,velocity,start);
     }
     [ClientRpc]void SpawnRockClientRpc(int id,Vector3 origin,Vector3 velocity,double start,ClientRpcParams rpc=default)=>SpawnRock(id,origin,velocity,start);
-    void SpawnRock(int id,Vector3 origin,Vector3 velocity,double start){if(rockVisuals.ContainsKey(id))return;LocalRockLaunches++;var go=GameObject.CreatePrimitive(PrimitiveType.Sphere);go.name="Thrown small rock";Destroy(go.GetComponent<Collider>());go.transform.localScale=new Vector3(.16f,.12f,.14f);var v=go.AddComponent<DistractionRockVisual>();v.Initialize(origin,velocity,start,Online);rockVisuals[id]=v;}
+    void SpawnRock(int id,Vector3 origin,Vector3 velocity,double start){if(rockVisuals.ContainsKey(id))return;LocalRockLaunches++;var go=SmallRockModel.Create();go.name="Thrown small rock";var v=go.AddComponent<DistractionRockVisual>();v.Initialize(origin,velocity,start,Online);rockVisuals[id]=v;}
     void TickFlights(){
         for(int i=flights.Count-1;i>=0;i--){var flight=flights[i];float age=(float)(Now-flight.start);Vector3 point=RockPosition(flight.origin,flight.velocity,age),delta=point-flight.previous;RaycastHit? nearest=null;
             foreach(var hit in Physics.SphereCastAll(flight.previous,.08f,delta.normalized,delta.magnitude,~0,QueryTriggerInteraction.Ignore)){

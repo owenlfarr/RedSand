@@ -10,8 +10,11 @@ public sealed class RockThrower:MonoBehaviour
     public int OfflineCount {get=>offlineCount;set=>offlineCount=Mathf.Clamp(value,0,1);}
     PlayerController player;
     NetworkPlayerMovementState state;
-    Canvas hud;TMP_Text message,hint;RawImage preview;
-    GameObject previewRoot;Transform rock;Camera previewCamera;RenderTexture texture;Material material;
+    Canvas hud;TMP_Text message,hint;
+    GameObject heldRock;
+    Camera heldCamera;
+    Camera worldCamera;
+    bool restoreHeldLayer;
     float nextSearch,searchStarted,messageUntil,nextSearchHold;bool searching;
     bool Online=>NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening;
     bool Local=>!Online||player.IsSpawned&&player.IsOwner;
@@ -19,14 +22,12 @@ public sealed class RockThrower:MonoBehaviour
     void Awake(){player=GetComponent<PlayerController>();state=GetComponent<NetworkPlayerMovementState>();}
     bool Living(){var life=GetComponent<OxygenSystem>();var networkLife=GetComponent<NetworkOxygenState>();return (life==null||!life.IsDead())&&(!Online||networkLife!=null&&!networkLife.IsDead.Value);}
     void Update(){
-        if(!Local)return;
+        if(!Local){if(heldCamera!=null)heldCamera.gameObject.SetActive(false);if(heldRock!=null)heldRock.SetActive(false);if(hud!=null)hud.gameObject.SetActive(false);return;}
         bool available=BlindLungeMonster.Instance!=null&&(!Online||BlindLungeMonster.Instance.IsSpawned)&&Living()&&player.enabled;
-        if(!available){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);return;}
+        if(!available){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);if(heldRock!=null)heldRock.SetActive(false);if(heldCamera!=null)heldCamera.gameObject.SetActive(false);return;}
         if(hud==null&&available)BuildHud();if(hud==null)return;
         hud.gameObject.SetActive(available&&!PlayerSettingsUI.IsGameMenuOpen);if(!available)return;
-        if(previewRoot!=null)previewRoot.SetActive(Carried>0);
-        preview.gameObject.SetActive(Carried>0);
-        if(rock!=null)rock.Rotate(0,35*Time.unscaledDeltaTime,0);
+        UpdateHeldRock();
         var view=player.playerCamera;if(view==null)return;
         bool ground=BlindLungeMonster.GroundInReach(player,view.forward);
         hint.text=Carried>0?"SMALL ROCK  /  LEFT CLICK TO THROW":searching?$"HOLD [E]  /  SEARCHING {Mathf.Clamp01((Time.time-searchStarted)/BlindLungeMonster.SearchDuration)*100:F0}%":ground?(Time.time<nextSearch?"SEARCH COOLDOWN":"HOLD [E] TO SEARCH GROUND"):view.forward.y<-.2f?"SEARCH ONLY ON PLANET SURFACE":"";
@@ -50,17 +51,48 @@ public sealed class RockThrower:MonoBehaviour
         var scaler=go.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1920,1080);
         message=Label(go.transform,"Search result",new Vector2(300,150),new Vector2(520,44),24);
         hint=Label(go.transform,"Rock controls",new Vector2(300,50),new Vector2(520,40),20);
-        var image=new GameObject("Held rock 3D preview",typeof(RectTransform),typeof(RawImage));image.transform.SetParent(go.transform,false);preview=image.GetComponent<RawImage>();preview.raycastTarget=false;
-        var rect=image.GetComponent<RectTransform>();rect.anchorMin=rect.anchorMax=Vector2.zero;rect.pivot=Vector2.zero;rect.anchoredPosition=new Vector2(35,75);rect.sizeDelta=new Vector2(110,110);
-        texture=new RenderTexture(160,160,16,RenderTextureFormat.ARGB32);texture.Create();preview.texture=texture;
-        previewRoot=new GameObject("Held rock preview studio");previewRoot.transform.position=Vector3.down*20000;
-        var model=GameObject.CreatePrimitive(PrimitiveType.Sphere);Destroy(model.GetComponent<Collider>());model.name="Small rock model";model.transform.SetParent(previewRoot.transform,false);model.layer=31;model.transform.localScale=new Vector3(.65f,.4f,.5f);rock=model.transform;
-        var shader=Shader.Find("Standard");material=new Material(shader);material.color=new Color(.34f,.25f,.18f);model.GetComponent<Renderer>().material=material;
-        var camera=new GameObject("Rock preview camera");camera.transform.SetParent(previewRoot.transform,false);camera.transform.localPosition=new Vector3(0,.1f,-2);previewCamera=camera.AddComponent<Camera>();previewCamera.targetTexture=texture;previewCamera.cullingMask=1<<31;previewCamera.clearFlags=CameraClearFlags.SolidColor;previewCamera.backgroundColor=Color.clear;previewCamera.orthographic=true;previewCamera.orthographicSize=.55f;previewCamera.nearClipPlane=.1f;previewCamera.farClipPlane=5;
-        var lamp=new GameObject("Rock preview light");lamp.transform.SetParent(previewRoot.transform,false);lamp.transform.localPosition=new Vector3(-.5f,1,-1);var light=lamp.AddComponent<Light>();light.type=LightType.Point;light.intensity=3;light.range=4;light.cullingMask=1<<31;
-        previewRoot.SetActive(false);
+    }
+    void UpdateHeldRock(){
+        bool visible=Carried>0&&!PlayerSettingsUI.IsGameMenuOpen&&Time.timeScale>0;
+        if(heldRock==null&&visible&&player.playerCamera!=null){
+            heldRock=SmallRockModel.Create(player.playerCamera);
+            heldRock.name="Physical held rock";
+            foreach(var renderer in heldRock.GetComponentsInChildren<Renderer>()){
+                renderer.gameObject.layer=31;
+                renderer.shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows=false;
+            }
+            // Render the physical first-person item after world fog, like a weapon
+            // view. This keeps it readable at night and outside nearby walls.
+            var cameraObject=new GameObject("Held rock view camera");
+            cameraObject.transform.SetParent(player.playerCamera,false);
+            heldCamera=cameraObject.AddComponent<Camera>();heldCamera.cullingMask=1<<31;
+            worldCamera=player.playerCamera.GetComponent<Camera>();
+            restoreHeldLayer=worldCamera!=null&&(worldCamera.cullingMask&(1<<31))!=0;
+            heldCamera.clearFlags=CameraClearFlags.Depth;heldCamera.nearClipPlane=.01f;heldCamera.farClipPlane=2;
+            var lamp=new GameObject("Held rock soft light");lamp.transform.SetParent(cameraObject.transform,false);
+            lamp.transform.localPosition=new Vector3(-.2f,.15f,.15f);
+            var light=lamp.AddComponent<Light>();light.type=LightType.Point;light.range=1.5f;light.intensity=2.5f;light.color=new Color(1,.88f,.76f);light.cullingMask=1<<31;
+        }
+        if(heldRock==null)return;
+        heldRock.SetActive(visible);
+        heldCamera.gameObject.SetActive(visible);
+        if(!visible)return;
+        var camera=player.playerCamera.GetComponent<Camera>();
+        if(camera==null){heldRock.SetActive(false);heldCamera.gameObject.SetActive(false);return;}
+        camera.cullingMask&=~(1<<31);
+        heldCamera.fieldOfView=camera.fieldOfView;heldCamera.aspect=camera.aspect;heldCamera.rect=camera.rect;heldCamera.depth=camera.depth+1;
+        heldCamera.allowHDR=camera.allowHDR;heldCamera.targetDisplay=camera.targetDisplay;
+        float moving=player.GetMoveInput().magnitude;
+        float bob=Mathf.Sin(Time.time*7)*.006f*moving;
+        heldRock.transform.position=camera.ViewportToWorldPoint(new Vector3(.16f,.18f,.5f))+camera.transform.up*bob;
+        heldRock.transform.rotation=camera.transform.rotation*Quaternion.Euler(58,-25,8+Mathf.Sin(Time.time*3)*moving);
+        // Camera parents may inherit the player body's nonuniform scale.
+        Vector3 scale=player.playerCamera.lossyScale;
+        heldRock.transform.localScale=new Vector3(1/scale.x,1/scale.y,1/scale.z);
     }
     static TMP_Text Label(Transform parent,string name,Vector2 position,Vector2 size,float font){var go=new GameObject(name,typeof(RectTransform),typeof(TextMeshProUGUI));go.transform.SetParent(parent,false);var text=go.GetComponent<TextMeshProUGUI>();text.fontSize=font;text.raycastTarget=false;text.alignment=TextAlignmentOptions.Left;var rt=go.GetComponent<RectTransform>();rt.anchorMin=rt.anchorMax=Vector2.zero;rt.pivot=Vector2.zero;rt.anchoredPosition=position;rt.sizeDelta=size;return text;}
-    void OnDisable(){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);if(previewRoot!=null)previewRoot.SetActive(false);}
-    void OnDestroy(){if(hud!=null)Destroy(hud.gameObject);if(previewRoot!=null)Destroy(previewRoot);if(texture!=null){texture.Release();Destroy(texture);}if(material!=null)Destroy(material);}
+    void RestoreCamera(){if(worldCamera!=null&&restoreHeldLayer)worldCamera.cullingMask|=1<<31;}
+    void OnDisable(){CancelSearch();if(hud!=null)hud.gameObject.SetActive(false);if(heldRock!=null)heldRock.SetActive(false);if(heldCamera!=null)heldCamera.gameObject.SetActive(false);RestoreCamera();}
+    void OnDestroy(){RestoreCamera();if(hud!=null)Destroy(hud.gameObject);if(heldRock!=null)Destroy(heldRock);if(heldCamera!=null)Destroy(heldCamera.gameObject);}
 }
