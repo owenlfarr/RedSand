@@ -1,57 +1,37 @@
 using UnityEngine;
 using Unity.Netcode;
 
-/// <summary>
-/// Drives the astronaut body animator based on player input and sprint state.
-/// Reads input axes directly — same source as PlayerController — to avoid
-/// the one-frame lag and scale distortion of CharacterController.velocity.
-/// Attach to the Capsule root. Assign bodyAnimator to the AstronautBody Animator.
-/// </summary>
+// Each observer evaluates the same atomic snapshot against the synchronized clock.
 [RequireComponent(typeof(PlayerController))]
+[DefaultExecutionOrder(100)]
 public class PlayerBodyAnimator : MonoBehaviour
 {
-    [Header("References")]
-    [Tooltip("The Animator on the AstronautBody child GameObject.")]
     public Animator bodyAnimator;
-
-    [Header("Smoothing")]
-    [Tooltip("How fast velocityZ blends toward the target. Lower = snappier.")]
-    public float animationDampTime = 0.1f;
-
-    // Cached parameter hashes — avoids string lookups every frame.
-    private static readonly int VelocityZHash   = Animator.StringToHash("velocityZ");
-    private static readonly int IsSprintingHash = Animator.StringToHash("isSprinting");
-
-    private PlayerController playerController;
-    private NetworkBehaviour networkBehaviour;
-
-    private void Awake()
-    {
-        playerController = GetComponent<PlayerController>();
-        networkBehaviour = GetComponent<NetworkBehaviour>();
-    }
-
-    private void Update()
-    {
-        if (bodyAnimator == null) return;
-
-        bool isRemoteSpawnedPlayer = networkBehaviour != null && networkBehaviour.IsSpawned && !networkBehaviour.IsOwner;
-
-        // Read local input for the owning player, synced movement for observers.
-        // Positive = forward (W), negative = backward (S).
-        float rawVertical = playerController.GetMoveInput().y;
-
-        // Scale by actual speed so the threshold is always met when moving.
-        // walkSpeed is the minimum speed, giving a velocityZ of ±walkSpeed when walking.
-        float targetVelocityZ = rawVertical * playerController.walkSpeed;
-
-        bool isSprinting = playerController.IsSprinting();
-
-        // When sprinting forward, boost to sprintSpeed so the Sprint state triggers.
-        if (isSprinting && rawVertical > 0f)
-            targetVelocityZ = rawVertical * playerController.sprintSpeed;
-
-        bodyAnimator.SetFloat(VelocityZHash,  targetVelocityZ, animationDampTime, Time.deltaTime);
-        bodyAnimator.SetBool(IsSprintingHash, isSprinting);
+    public float animationDampTime=.1f;
+    static readonly int X=Animator.StringToHash("velocityX"),Z=Animator.StringToHash("velocityZ"),Gait=Animator.StringToHash("gait"),JumpTime=Animator.StringToHash("jumpTime");
+    static readonly int Locomotion=Animator.StringToHash("Base Layer.Locomotion"),Jump=Animator.StringToHash("Base Layer.Jump");
+    PlayerController player;NetworkPlayerMovementState movement;
+    float jumpLength=2.3666667f;bool jumping,initialized;RuntimeAnimatorController configured;
+    public bool IsPlayingJump=>jumping;
+    public float JumpPhase {get;private set;}
+    void Awake(){player=GetComponent<PlayerController>();movement=GetComponent<NetworkPlayerMovementState>();}
+    void OnEnable(){initialized=false;jumping=false;}
+    void LateUpdate(){
+        if(bodyAnimator==null||!bodyAnimator.enabled||!bodyAnimator.gameObject.activeInHierarchy)return;
+        if(configured!=bodyAnimator.runtimeAnimatorController){configured=bodyAnimator.runtimeAnimatorController;initialized=false;jumping=false;if(configured!=null)foreach(var clip in configured.animationClips)if(clip.name=="AstronautJump"){jumpLength=clip.length;break;}}
+        if(!bodyAnimator.HasState(0,Locomotion)||!bodyAnimator.HasState(0,Jump))return;
+        var state=movement!=null&&movement.IsSpawned?movement.Animation.Value:player.LocalAnimation;
+        if((movement!=null&&movement.IsSpawned&&!movement.MovementEnabled.Value)||NightTransition.BlocksGameplay||GetComponent<OxygenSystem>()?.IsDead()==true)state.Suppressed=true;
+        Vector2 move=state.Suppressed?Vector2.zero:Vector2.ClampMagnitude(state.Move,1);
+        bodyAnimator.applyRootMotion=false;
+        bodyAnimator.SetFloat(X,move.x,animationDampTime,Time.deltaTime);bodyAnimator.SetFloat(Z,move.y,animationDampTime,Time.deltaTime);
+        bodyAnimator.SetFloat(Gait,state.Sprint&&move.sqrMagnitude>.001f?1:0,animationDampTime,Time.deltaTime);
+        bool online=NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening;
+        double now=online?NetworkManager.Singleton.ServerTime.Time:Time.realtimeSinceStartupAsDouble;
+        bool jump=AstronautJumpTiming.Sample(state,now,jumpLength,out float phase);JumpPhase=phase;
+        bodyAnimator.SetFloat(JumpTime,Mathf.Clamp01(phase));
+        if(!initialized){bodyAnimator.Play(jump?Jump:Locomotion,0,jump?phase:0);initialized=true;}
+        else if(jump!=jumping)bodyAnimator.CrossFadeInFixedTime(jump?Jump:Locomotion,jump?.06f:.1f,0);
+        jumping=jump;
     }
 }

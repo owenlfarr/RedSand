@@ -180,6 +180,27 @@ public class PlayerController : NetworkBehaviour
         HandleSprint();
     }
 
+    PlayerAnimationSnapshot localAnimation;
+    bool animationTakeoff;
+    public PlayerAnimationSnapshot LocalAnimation=>localAnimation;
+    void PublishAnimation()
+    {
+        bool online=NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening;
+        if(online&&(!IsSpawned||!IsOwner))return;
+        if(controller==null)return;
+        bool dead=oxygenSystem!=null&&oxygenSystem.IsDead();
+        bool suppressed=dead||NightTransition.BlocksGameplay||(movementState!=null&&movementState.IsSpawned&&!movementState.MovementEnabled.Value);
+        double now=online?NetworkManager.Singleton.ServerTime.Time:Time.realtimeSinceStartupAsDouble;
+        bool airborne=!suppressed&&(!controller.isGrounded||velocity.y>0);
+        if(airborne&&!localAnimation.Airborne){localAnimation.JumpSequence++;localAnimation.JumpedAt=now;localAnimation.LandedAt=0;localAnimation.Takeoff=animationTakeoff;}
+        if(!airborne&&localAnimation.Airborne)localAnimation.LandedAt=now;
+        localAnimation.Airborne=airborne;localAnimation.Suppressed=suppressed;
+        localAnimation.Move=suppressed?Vector2.zero:Vector2.ClampMagnitude(GetMoveInput(),1);
+        localAnimation.Sprint=!suppressed&&IsSprinting();
+        animationTakeoff=false;
+        if(online&&movementState!=null&&movementState.IsSpawned){movementState.Animation.Value=localAnimation;movementState.IsGrounded.Value=!airborne;}
+    }
+
     private void EnforceCursorState()
     {
         bool isLocal = !IsSpawned || IsOwner;
@@ -206,6 +227,7 @@ public class PlayerController : NetworkBehaviour
 
     private void LateUpdate()
     {
+        PublishAnimation();
         if (!CanProcessLocalInput())
         {
             return;
@@ -338,6 +360,7 @@ public class PlayerController : NetworkBehaviour
         if (Input.GetKeyDown(KeyCode.Space) && isGrounded)
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+            animationTakeoff=true;
         }
     }
 

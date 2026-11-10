@@ -21,6 +21,7 @@ public class RebuildPlayerAnimator : AssetPostprocessor
     private static void OnPostprocessAllAssets(
         string[] imported, string[] deleted, string[] moved, string[] movedFrom)
     {
+        if(AstronautAnimationSetup.Busy)return;
         AnimatorController ctrl =
             AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
 
@@ -44,6 +45,7 @@ public class RebuildPlayerAnimator : AssetPostprocessor
     [MenuItem("Tools/Rebuild Player Animator")]
     public static void Rebuild()
     {
+        if(AstronautAnimationSetup.Available){AstronautAnimationSetup.Install();return;}
         // ── 1. Extract clips ────────────────────────────────────────────────
         if (!AssetDatabase.IsValidFolder(AnimationsFolder))
             AssetDatabase.CreateFolder("Assets", "Animations");
