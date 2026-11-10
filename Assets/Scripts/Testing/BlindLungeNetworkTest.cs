@@ -12,7 +12,7 @@ using Unity.Netcode.Transports.UTP;
  public NetworkVariable<int> Stage=new NetworkVariable<int>();
  BlindLungeMonster monster;string role;int previous=-1,checks;float nextReport,stageStart,nextHold;bool threw,released;
  readonly Dictionary<ulong,Report> reports=new Dictionary<ulong,Report>();
- struct Report{public int launches,impacts,replies,result,rocks,deaths,phase,sounds;public Vector3 position;public bool pa;public float volume;}
+ struct Report{public int launches,impacts,replies,result,rocks,deaths,phase,sounds;public Vector3 position;public bool pa,crawl,rootMotion;public float volume,crawlPhase;public double crawlAt;public Quaternion crawlBone;}
  IEnumerator Start(){var args=Environment.GetCommandLineArgs();int index=Array.IndexOf(args,"-blindTest");if(index<0)yield break;role=args[index+1];Application.runInBackground=true;Application.targetFrameRate=60;QualitySettings.vSyncCount=0;
   FindFirstObjectByType<NightTimeManager>().gameObject.AddComponent<PAScreecher>();
   NetworkManager.GetComponent<UnityTransport>().SetConnectionData("127.0.0.1",17849,"127.0.0.1");yield return null;
@@ -37,9 +37,10 @@ using Unity.Netcode.Transports.UTP;
   }
   if(role=="client"&&Stage.Value==3&&!threw&&movement.CarriedDistractionRocks.Value==1){threw=true;monster.RequestThrow(player,Vector3.forward+Vector3.up*.6f);}
   if(role=="client"&&Stage.Value==4&&!threw){threw=true;monster.ReportLocalSpeech();}
-  if(!IsServer&&Time.time>=nextReport){nextReport=Time.time+.08f;ReportServerRpc(monster.LocalRockLaunches,monster.LocalRockImpacts,monster.LocalSearchReplies,monster.LastLocalSearchResult,movement.CarriedDistractionRocks.Value,monster.LocalDeathPresentations,(int)monster.CurrentPhase,monster.transform.position,FindFirstObjectByType<PAScreecher>().IsActive,AudioListener.volume,monster.LocalLungeSounds);}
+  if(!IsServer&&Time.time>=nextReport){nextReport=Time.time+.08f;ReportServerRpc(monster.LocalRockLaunches,monster.LocalRockImpacts,monster.LocalSearchReplies,monster.LastLocalSearchResult,movement.CarriedDistractionRocks.Value,monster.LocalDeathPresentations,(int)monster.CurrentPhase,monster.transform.position,FindFirstObjectByType<PAScreecher>().IsActive,AudioListener.volume,monster.LocalLungeSounds,monster.GetComponent<BlindCrawlAnimator>()!=null,monster.GetComponent<BlindCrawlAnimator>()?.animator.applyRootMotion??true,monster.GetComponent<BlindCrawlAnimator>()?.LoopPhase??0,NetworkManager.ServerTime.Time,CrawlBone(monster));}
  }
- [ServerRpc(RequireOwnership=false)]void ReportServerRpc(int launches,int impacts,int replies,int result,int rocks,int deaths,int phase,Vector3 position,bool pa,float volume,int sounds,ServerRpcParams rpc=default){reports[rpc.Receive.SenderClientId]=new Report{launches=launches,impacts=impacts,replies=replies,result=result,rocks=rocks,deaths=deaths,phase=phase,position=position,pa=pa,volume=volume,sounds=sounds};}
+ [ServerRpc(RequireOwnership=false)]void ReportServerRpc(int launches,int impacts,int replies,int result,int rocks,int deaths,int phase,Vector3 position,bool pa,float volume,int sounds,bool crawl,bool rootMotion,float crawlPhase,double crawlAt,Quaternion crawlBone,ServerRpcParams rpc=default){reports[rpc.Receive.SenderClientId]=new Report{launches=launches,impacts=impacts,replies=replies,result=result,rocks=rocks,deaths=deaths,phase=phase,position=position,pa=pa,volume=volume,sounds=sounds,crawl=crawl,rootMotion=rootMotion,crawlPhase=crawlPhase,crawlAt=crawlAt,crawlBone=crawlBone};}
+ static Quaternion CrawlBone(BlindLungeMonster actor){var driver=actor.GetComponent<BlindCrawlAnimator>();var bone=driver==null?null:driver.animator.GetComponentsInChildren<Transform>().FirstOrDefault(t=>t.name=="mixamorig:LeftForeArm");return bone==null?Quaternion.identity:bone.localRotation;}
  void ResetMonster(Vector3 position){var motor=monster.GetComponent<CharacterController>();motor.enabled=false;monster.transform.position=position+Vector3.up*.05f;motor.enabled=true;var flags=BindingFlags.Instance|BindingFlags.NonPublic;typeof(BlindLungeMonster).GetField("heard",flags).SetValue(monster,false);typeof(BlindLungeMonster).GetField("phase",flags).SetValue(monster,BlindLungeMonster.Phase.Listening);typeof(BlindLungeMonster).GetField("priorityUntil",flags).SetValue(monster,0f);typeof(BlindLungeMonster).GetField("memoryUntil",flags).SetValue(monster,0f);typeof(BlindLungeMonster).GetField("home",flags).SetValue(monster,monster.transform.position);typeof(BlindLungeMonster).GetField("hasLastSound",flags).SetValue(monster,false);typeof(BlindLungeMonster).GetField("nextWander",flags).SetValue(monster,0f);Physics.SyncTransforms();}
  IEnumerator Run(){
   yield return Wait(()=>NetworkManager.ConnectedClientsList.Count>=2,"initial client joins",25);
@@ -50,6 +51,17 @@ using Unity.Netcode.Transports.UTP;
   Vector3 idle=monster.transform.position;yield return new WaitForSeconds(1.2f);
   Check(Vector3.ProjectOnPlane(monster.transform.position-idle,Vector3.up).magnitude>1&&!monster.HasHeardNoise,"blind idle roaming without any player noise");
   Check(monster.LungeAudioSource.spatialBlend==1&&monster.LungeAudioSource.clip!=null,"lunge has a positional sound cue");
+  var crawlDriver=monster.GetComponent<BlindCrawlAnimator>();
+  Check(crawlDriver!=null&&crawlDriver.crawlClip.isLooping&&!crawlDriver.animator.applyRootMotion,"host has looping crawl model with root motion disabled");
+  yield return Wait(()=>reports.ContainsKey(clientId)&&reports[clientId].crawl&&!reports[clientId].rootMotion,"client receives crawl visual without a second movement authority",3);
+  Quaternion ownBone=CrawlBone(monster),remoteBone=reports[clientId].crawlBone;yield return new WaitForSeconds(.16f);
+  Check(Quaternion.Angle(ownBone,CrawlBone(monster))>.1f,"host crawl skeleton actually animates");
+  yield return Wait(()=>Quaternion.Angle(remoteBone,reports[clientId].crawlBone)>.1f,"client crawl skeleton actually animates",2);
+  Check(Mathf.Abs(Mathf.DeltaAngle(reports[clientId].crawlPhase*360,BlindCrawlAnimator.PhaseAt(reports[clientId].crawlAt,crawlDriver.crawlClip.length)*360))<45,"client crawl pose follows synchronized server clock");
+  int wraps=0;float previousPhase=crawlDriver.LoopPhase;float loopEnd=Time.time+1.6f;
+  while(Time.time<loopEnd){if(crawlDriver.LoopPhase<previousPhase)wraps++;previousPhase=crawlDriver.LoopPhase;yield return null;}
+  Check(wraps>=2,"crawl animation loops repeatedly instead of stopping after one cycle");
+
   ResetMonster(Vector3.zero);Stage.Value=1;yield return new WaitForSeconds(1.25f);
   Check(monster.HasHeardNoise&&monster.transform.position.z>5,"remote sprint footsteps trigger host lunge");
   yield return Wait(()=>reports.ContainsKey(clientId)&&reports[clientId].phase!=(int)BlindLungeMonster.Phase.Listening,"client sees authoritative lunge phase",3);
@@ -88,6 +100,8 @@ using Unity.Netcode.Transports.UTP;
   yield return Wait(()=>NetworkManager.ConnectedClientsList.Count>=3,"late client joins running session",30);
   var late=NetworkManager.ConnectedClientsList.First(c=>c.ClientId!=NetworkManager.LocalClientId&&c.ClientId!=clientId);
   yield return Wait(()=>reports.ContainsKey(late.ClientId)&&Vector3.Distance(reports[late.ClientId].position,monster.Position.Value)<.6f,"late join receives current moving monster position",6);
+  yield return Wait(()=>reports[late.ClientId].crawl&&!reports[late.ClientId].rootMotion,"late join receives looping crawl model",3);
+  yield return Wait(()=>Mathf.Abs(Mathf.DeltaAngle(reports[late.ClientId].crawlPhase*360,BlindCrawlAnimator.PhaseAt(reports[late.ClientId].crawlAt,crawlDriver.crawlClip.length)*360))<45,"late join enters current crawl cycle after first animator evaluation",3);
   yield return Wait(()=>reports[late.ClientId].pa&&reports[late.ClientId].volume<.05f,"late join receives ongoing PA takeover",3);
   FindFirstObjectByType<NightTimeManager>().PAScreechEndsAt.Value=0;
   yield return Wait(()=>!pa.IsActive&&!reports[clientId].pa&&!reports[late.ClientId].pa&&reports[clientId].volume>.9f&&reports[late.ClientId].volume>.9f,"PA expiry restores hearing on all peers",3);

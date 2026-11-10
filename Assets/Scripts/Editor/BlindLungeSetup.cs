@@ -67,7 +67,7 @@ using TMPro;
    check(!monster.HearNoise(Vector3.right*5,12)&&monster.LastHeardPosition==Vector3.forward*25,"rock distraction briefly overrides footsteps");
    var wall=GameObject.CreatePrimitive(PrimitiveType.Cube);wall.transform.position=new Vector3(0,1,10);wall.transform.localScale=new Vector3(10,4,1);Physics.SyncTransforms();
    check(!monster.HearNoise(Vector3.forward*25,40,true),"solid wall muffles distant sound");
-   check(monster.visual!=null&&monster.visual.GetComponentsInChildren<TextMeshPro>().Length==4,"model swap visual is separate and labeled on four sides");
+   check(monster.visual!=null&&(monster.visual.GetComponentsInChildren<TextMeshPro>().Length==4||monster.visual.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length>0),"model swap visual has a skinned model or labeled placeholder");
    File.WriteAllText("Logs/BlindLungeChecksResult.txt","PASS "+assertions+" core assertions. Multiplayer RPC/input, collision deaths and sound balance require a live playtest.");
   }catch(Exception e){File.WriteAllText("Logs/BlindLungeChecksResult.txt","FAIL "+e);Debug.LogException(e);}
   finally{if(clone!=null)UnityEngine.Object.DestroyImmediate(clone);if(test.IsValid())EditorSceneManager.CloseScene(test,true);if(previous.IsValid()&&previous.isLoaded)SceneManager.SetActiveScene(previous);}
