@@ -94,8 +94,11 @@ public class PlayerController : NetworkBehaviour
     private float landingImpactOffset = 0f;
     [HideInInspector] public Vector3 externalCameraOffset = Vector3.zero;
 
+    public bool PresentationReady {get;private set;}
+
     private void Start()
     {
+        if (GetComponent<PlayerSurfaceAudio>() == null) gameObject.AddComponent<PlayerSurfaceAudio>();
         if (GetComponent<RockThrower>() == null) gameObject.AddComponent<RockThrower>();
         if (GetComponent<BunkerTablet>() == null) gameObject.AddComponent<BunkerTablet>();
         if (GetComponent<FirstPersonHeadVisibility>() == null) gameObject.AddComponent<FirstPersonHeadVisibility>();
@@ -141,6 +144,7 @@ public class PlayerController : NetworkBehaviour
         }
 
         ApplyLocalOwnershipPresentation();
+        PresentationReady = true;
     }
 
     private void OnEnable()

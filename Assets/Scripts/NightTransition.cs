@@ -11,7 +11,7 @@ using TMPro;
 // Persistent local curtain, coordinated with reliable host messages and black-screen acknowledgements.
 public sealed class NightTransition : MonoBehaviour
 {
-    const string BeginMessage="NightCurtain.Begin",ReadyMessage="NightCurtain.Ready",RevealMessage="NightCurtain.Reveal",CancelMessage="NightCurtain.Cancel",MenuMessage="NightCurtain.Menu";
+    const string BeginMessage="NightCurtain.Begin",ReadyMessage="NightCurtain.Ready",RevealMessage="NightCurtain.Reveal",CancelMessage="NightCurtain.Cancel",MenuMessage="NightCurtain.Menu",PrepareMessage="NightCurtain.Prepare",ArrivedMessage="NightCurtain.Arrived";
     static NightTransition instance;
     public static bool BlocksGameplay => instance!=null&&instance.busy;
     public static bool IsNightScene(string scene)=>scene!=null&&scene.StartsWith("Night",StringComparison.OrdinalIgnoreCase);
@@ -23,6 +23,11 @@ public sealed class NightTransition : MonoBehaviour
     public int EightAmCards {get;private set;}
     public int NightCards {get;private set;}
     public bool AllPeersCovered {get;private set;}
+    public bool AllPeersLoaded {get;private set;}
+    readonly HashSet<ulong> arrived=new HashSet<ulong>();
+    readonly List<ulong> arrivalRoster=new List<ulong>();
+    bool awaitingArrival,arrivalSent;string arrivalScene="";float nextPrepare;
+    double revealAt;
     Image curtain;TMP_Text title;Camera loadingCamera;NetworkManager manager;CustomMessagingManager messages;
     Coroutine animation;readonly HashSet<ulong> covered=new HashSet<ulong>();
     int token,nextToken;string expected="";bool busy,localCovered,readySent,showEight,wasOnline,revealing;float nextBroadcast,coverStarted;
@@ -47,15 +52,16 @@ public sealed class NightTransition : MonoBehaviour
         if(current==null||!current.IsListening||current.CustomMessagingManager==null)return;
         if(messages==current.CustomMessagingManager)return;
         Unbind();token=nextToken=0;readySent=false;covered.Clear();manager=current;messages=current.CustomMessagingManager;
-        messages.RegisterNamedMessageHandler(BeginMessage,OnBegin);messages.RegisterNamedMessageHandler(ReadyMessage,OnReady);messages.RegisterNamedMessageHandler(RevealMessage,OnReveal);messages.RegisterNamedMessageHandler(CancelMessage,OnCancel);messages.RegisterNamedMessageHandler(MenuMessage,OnMenu);wasOnline=true;
+        messages.RegisterNamedMessageHandler(BeginMessage,OnBegin);messages.RegisterNamedMessageHandler(ReadyMessage,OnReady);messages.RegisterNamedMessageHandler(RevealMessage,OnReveal);messages.RegisterNamedMessageHandler(CancelMessage,OnCancel);messages.RegisterNamedMessageHandler(MenuMessage,OnMenu);messages.RegisterNamedMessageHandler(PrepareMessage,OnPrepare);messages.RegisterNamedMessageHandler(ArrivedMessage,OnArrived);wasOnline=true;
     }
-    void Unbind(){if(messages!=null){messages.UnregisterNamedMessageHandler(BeginMessage);messages.UnregisterNamedMessageHandler(ReadyMessage);messages.UnregisterNamedMessageHandler(RevealMessage);messages.UnregisterNamedMessageHandler(CancelMessage);messages.UnregisterNamedMessageHandler(MenuMessage);}messages=null;manager=null;}
+    void Unbind(){if(messages!=null){messages.UnregisterNamedMessageHandler(BeginMessage);messages.UnregisterNamedMessageHandler(ReadyMessage);messages.UnregisterNamedMessageHandler(RevealMessage);messages.UnregisterNamedMessageHandler(CancelMessage);messages.UnregisterNamedMessageHandler(MenuMessage);messages.UnregisterNamedMessageHandler(PrepareMessage);messages.UnregisterNamedMessageHandler(ArrivedMessage);}messages=null;manager=null;}
     void Update(){
         Bind();
         if(wasOnline&&(manager==null||!manager.IsListening)){
             wasOnline=false;Unbind();if(expected!="MainMenu")CancelLocal();
         }
         if(messages!=null&&localCovered&&!readySent){SendReady();}
+        TickArrival();
     }
     void LateUpdate(){if(loadingCamera!=null)loadingCamera.enabled=busy||(curtain!=null&&curtain.color.a>0);}
     void SceneLoaded(Scene scene,LoadSceneMode mode){
@@ -74,7 +80,7 @@ public sealed class NightTransition : MonoBehaviour
     void StartCover(int id,string scene,bool eight){
         if(token==id&&busy){if(localCovered)SendReady();return;}
         if(animation!=null)StopCoroutine(animation);
-        token=id;expected=scene;showEight=eight;busy=true;localCovered=readySent=revealing=false;AllPeersCovered=false;coverStarted=Time.realtimeSinceStartup;
+        token=id;expected=scene;showEight=eight;busy=true;localCovered=readySent=revealing=false;AllPeersCovered=false;ResetArrival();coverStarted=Time.realtimeSinceStartup;
         animation=StartCoroutine(Cover());
     }
     IEnumerator Cover(){
@@ -109,11 +115,87 @@ public sealed class NightTransition : MonoBehaviour
         using(var writer=new FastBufferWriter(4,Allocator.Temp)){writer.WriteValueSafe(token);messages.SendNamedMessage(ReadyMessage,NetworkManager.ServerClientId,writer,NetworkDelivery.ReliableSequenced);}
     }
     void OnReady(ulong sender,FastBufferReader reader){if(manager==null||!manager.IsServer||!manager.ConnectedClients.ContainsKey(sender))return;reader.ReadValueSafe(out int id);if(id==token&&busy)covered.Add(sender);}
-    public void ReleaseAfterLoad(string scene){
-        Bind();if(manager!=null&&manager.IsServer&&messages!=null)using(var writer=new FastBufferWriter(256,Allocator.Temp)){writer.WriteValueSafe(token);writer.WriteValueSafe(scene);foreach(var id in manager.ConnectedClientsIds)if(id!=manager.LocalClientId)messages.SendNamedMessage(RevealMessage,id,writer,NetworkDelivery.ReliableSequenced);}
-        BeginReveal(scene);
+    void ResetArrival(){awaitingArrival=arrivalSent=false;arrivalScene="";arrivalRoster.Clear();arrived.Clear();AllPeersLoaded=false;revealAt=0;}
+    public bool LocalSceneReady(string scene){
+        if(SceneManager.GetActiveScene().name!=scene)return false;
+        var nm=NetworkManager.Singleton;
+        if(nm==null||!nm.IsListening)return FindFirstObjectByType<PlayerController>()?.PresentationReady==true;
+        var clock=NightTimeManager.Instance;
+        if(clock==null||!clock.IsSpawned||nm.LocalClient?.PlayerObject==null)return false;
+        foreach(var owner in arrivalRoster){
+            bool found=false;
+            foreach(var obj in nm.SpawnManager.SpawnedObjectsList){
+                if(obj==null||!obj.IsPlayerObject||obj.OwnerClientId!=owner||!obj.IsSpawned)continue;
+                var life=obj.GetComponent<NetworkOxygenState>();var movement=obj.GetComponent<NetworkPlayerMovementState>();
+                if(life==null||!life.IsSpawned||movement==null||!movement.IsSpawned)return false;
+                if(!life.IsDead.Value&&obj.GetComponent<PlayerController>()?.PresentationReady!=true)return false;
+                found=true;break;
+            }
+            if(!found)return false;
+        }
+        var local=nm.LocalClient.PlayerObject;
+        if(!local.IsSpawned)return false;
+        if(local.GetComponent<NetworkOxygenState>()?.IsDead.Value==true)
+            return local.GetComponent<PlayerDeathSpectator>()?.IsSpectating==true;
+        var player=local.GetComponent<PlayerController>();
+        if(player==null||!player.PresentationReady||player.playerCamera==null)return false;
+        var camera=player.playerCamera.GetComponent<Camera>();var listener=player.playerCamera.GetComponent<AudioListener>();
+        return camera!=null&&camera.isActiveAndEnabled&&listener!=null&&listener.isActiveAndEnabled;
     }
-    void OnReveal(ulong sender,FastBufferReader reader){if(sender!=NetworkManager.ServerClientId||manager==null||manager.IsServer)return;reader.ReadValueSafe(out int id);reader.ReadValueSafe(out string scene);if(id!=token||!busy||expected!=scene)return;BeginReveal(scene);}
+    public void ReleaseAfterLoad(string scene){
+        Bind();
+        if(manager==null||!manager.IsListening){BeginReveal(scene);return;}
+        if(!manager.IsServer||!busy||expected!=scene||awaitingArrival||revealing)return;
+        ResetArrival();awaitingArrival=true;arrivalScene=scene;nextPrepare=0;
+    }
+    void SetRoster(List<ulong> roster){
+        roster.Sort();bool changed=roster.Count!=arrivalRoster.Count;
+        if(!changed)for(int i=0;i<roster.Count;i++)if(roster[i]!=arrivalRoster[i]){changed=true;break;}
+        if(!changed)return;
+        arrivalRoster.Clear();arrivalRoster.AddRange(roster);arrivalSent=false;arrived.Clear();
+    }
+    void BroadcastPrepare(){
+        using(var writer=new FastBufferWriter(1024,Allocator.Temp)){
+            writer.WriteValueSafe(token);writer.WriteValueSafe(arrivalScene);writer.WriteValueSafe(arrivalRoster.Count);
+            foreach(var owner in arrivalRoster)writer.WriteValueSafe(owner);
+            foreach(var id in manager.ConnectedClientsIds)if(id!=manager.LocalClientId)messages.SendNamedMessage(PrepareMessage,id,writer,NetworkDelivery.ReliableSequenced);
+        }
+    }
+    void OnPrepare(ulong sender,FastBufferReader reader){
+        if(manager==null||manager.IsServer||sender!=NetworkManager.ServerClientId)return;
+        reader.ReadValueSafe(out int id);reader.ReadValueSafe(out string scene);reader.ReadValueSafe(out int count);
+        if(id!=token||!busy||revealing||expected!=scene||count<1||count>64)return;
+        var roster=new List<ulong>();for(int i=0;i<count;i++){reader.ReadValueSafe(out ulong owner);roster.Add(owner);}
+        arrivalScene=scene;awaitingArrival=true;SetRoster(roster);
+    }
+    void OnArrived(ulong sender,FastBufferReader reader){
+        if(manager==null||!manager.IsServer||!awaitingArrival||!manager.ConnectedClients.ContainsKey(sender))return;
+        reader.ReadValueSafe(out int id);reader.ReadValueSafe(out string scene);
+        if(id==token&&scene==arrivalScene&&arrivalRoster.Contains(sender))arrived.Add(sender);
+    }
+    void TickArrival(){
+        if(!awaitingArrival||manager==null||!manager.IsListening||messages==null)return;
+        if(manager.IsServer){
+            SetRoster(new List<ulong>(manager.ConnectedClientsIds));
+            if(Time.realtimeSinceStartup>=nextPrepare){nextPrepare=Time.realtimeSinceStartup+.4f;BroadcastPrepare();}
+        }
+        if(!arrivalSent&&LocalSceneReady(arrivalScene)){
+            arrivalSent=true;
+            if(manager.IsServer)arrived.Add(manager.LocalClientId);
+            else using(var writer=new FastBufferWriter(256,Allocator.Temp)){writer.WriteValueSafe(token);writer.WriteValueSafe(arrivalScene);messages.SendNamedMessage(ArrivedMessage,NetworkManager.ServerClientId,writer,NetworkDelivery.ReliableSequenced);}
+        }
+        if(!manager.IsServer||arrivalRoster.Count==0)return;
+        foreach(var owner in arrivalRoster)if(!arrived.Contains(owner))return;
+        AllPeersLoaded=true;awaitingArrival=false;revealAt=manager.ServerTime.Time+.4;
+        using(var writer=new FastBufferWriter(256,Allocator.Temp)){writer.WriteValueSafe(token);writer.WriteValueSafe(arrivalScene);writer.WriteValueSafe(revealAt);foreach(var id in manager.ConnectedClientsIds)if(id!=manager.LocalClientId)messages.SendNamedMessage(RevealMessage,id,writer,NetworkDelivery.ReliableSequenced);}
+        BeginReveal(arrivalScene);
+    }
+    void OnReveal(ulong sender,FastBufferReader reader){
+        if(sender!=NetworkManager.ServerClientId||manager==null||manager.IsServer)return;
+        reader.ReadValueSafe(out int id);reader.ReadValueSafe(out string scene);reader.ReadValueSafe(out double time);
+        if(id!=token||!busy||expected!=scene||!arrivalSent)return;
+        awaitingArrival=false;AllPeersLoaded=true;revealAt=time;BeginReveal(scene);
+    }
     void BeginReveal(string scene){if(revealing)return;if(animation!=null)StopCoroutine(animation);revealing=true;busy=true;animation=StartCoroutine(Reveal(scene));}
     IEnumerator Reveal(string scene){
         SetBlack(1);SetTitle("",0);
@@ -123,16 +205,24 @@ public sealed class NightTransition : MonoBehaviour
             while(true){
                 var nm=NetworkManager.Singleton;var clock=NightTimeManager.Instance;
                 bool online=nm!=null&&nm.IsListening;
-                bool ready=online?clock!=null&&clock.IsSpawned&&nm.LocalClient?.PlayerObject!=null&&nm.LocalClient.PlayerObject.IsSpawned:FindFirstObjectByType<PlayerController>()!=null;
+                bool ready=LocalSceneReady(scene);
                 if(ready)break;yield return null;
             }
-            SetTitle(NightTitle(scene),1);NightCards++;yield return new WaitForSecondsRealtime(1.25f);SetTitle("",0);
+            bool scheduled=revealAt>0&&NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening;
+            if(scheduled)while(NetworkManager.Singleton.ServerTime.Time<revealAt)yield return null;
+            SetTitle(NightTitle(scene),1);NightCards++;
+            if(scheduled)while(NetworkManager.Singleton.ServerTime.Time<revealAt+1.25)yield return null;
+            else yield return new WaitForSecondsRealtime(1.25f);
+            SetTitle("",0);
         }else yield return new WaitForSecondsRealtime(.2f);
-        yield return Fade(1,0,.75f);SetTitle("",0);busy=false;localCovered=false;expected="";revealing=false;animation=null;curtain.raycastTarget=false;
+        if(revealAt>0&&NetworkManager.Singleton!=null&&NetworkManager.Singleton.IsListening){
+            while(NetworkManager.Singleton.ServerTime.Time<revealAt+2){SetBlack(1-Mathf.Clamp01((float)(NetworkManager.Singleton.ServerTime.Time-revealAt-1.25)/.75f));yield return null;}SetBlack(0);
+        }else yield return Fade(1,0,.75f);
+        SetTitle("",0);busy=false;localCovered=false;expected="";revealing=false;animation=null;curtain.raycastTarget=false;
     }
     public void Cancel(){if(manager!=null&&manager.IsServer&&messages!=null)using(var writer=new FastBufferWriter(4,Allocator.Temp)){writer.WriteValueSafe(token);foreach(var id in manager.ConnectedClientsIds)if(id!=manager.LocalClientId)messages.SendNamedMessage(CancelMessage,id,writer,NetworkDelivery.ReliableSequenced);}CancelLocal();}
     void OnCancel(ulong sender,FastBufferReader reader){if(sender!=NetworkManager.ServerClientId)return;reader.ReadValueSafe(out int id);if(id==token)CancelLocal();}
-    void CancelLocal(){if(animation!=null)StopCoroutine(animation);animation=null;busy=localCovered=revealing=false;expected="";SetTitle("",0);SetBlack(0);}
+    void CancelLocal(){if(animation!=null)StopCoroutine(animation);animation=null;busy=localCovered=revealing=false;ResetArrival();expected="";SetTitle("",0);SetBlack(0);}
     public void ReturnPartyToMenu(){
         if(manager!=null&&manager.IsServer&&messages!=null)using(var writer=new FastBufferWriter(4,Allocator.Temp)){writer.WriteValueSafe(token);foreach(var id in manager.ConnectedClientsIds)if(id!=manager.LocalClientId)messages.SendNamedMessage(MenuMessage,id,writer,NetworkDelivery.ReliableSequenced);}
         StartCoroutine(ReturnLocal());
