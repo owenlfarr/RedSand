@@ -32,6 +32,9 @@ public sealed class DrillSystem : NetworkBehaviour
     public Transform drillButton;
     public Collider buttonCollider;
     public TMP_Text statusText, materialsText;
+    [Header("Drill Feedback")]
+    [Tooltip("Optional sound played when the drill is enabled or disabled. A procedural click is used when empty.")]
+    public AudioClip drillToggleSound;
     public float interactionDistance = 3f;
     public NetworkVariable<DrillSnapshot> Team = new NetworkVariable<DrillSnapshot>(default,
         NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -46,6 +49,15 @@ public sealed class DrillSystem : NetworkBehaviour
     PlayerController localPlayer;
     TMP_Text prompt;
     GameObject promptCanvas;
+    Image activityBar;
+    Image activityFill;
+    Image activityFlash;
+    AudioSource feedbackAudio;
+    AudioClip generatedToggleSound;
+    DrillSnapshot lastVisualState;
+    bool hasVisualState;
+    float resourceFlashUntil;
+    bool feedbackBuilt;
     bool Online => NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
     bool Authority => !Online || (IsSpawned && IsServer);
 
@@ -63,6 +75,7 @@ public sealed class DrillSystem : NetworkBehaviour
             stockpile.Changed += StockpileChanged;
         }
         Team.OnValueChanged += StateChanged;
+        EnsureFeedbackVisual();
         RefreshScreen();
     }
     public override void OnNetworkDespawn()
@@ -79,8 +92,21 @@ public sealed class DrillSystem : NetworkBehaviour
         if (promptCanvas != null) Destroy(promptCanvas);
         base.OnDestroy();
     }
-    void Start() { RefreshScreen(); }
-    void StateChanged(DrillSnapshot before, DrillSnapshot after) { RefreshScreen(); }
+    void Start()
+    {
+        EnsureFeedbackVisual();
+        RefreshScreen();
+    }
+
+    void StateChanged(DrillSnapshot before, DrillSnapshot after)
+    {
+        if (before.Enabled != after.Enabled)
+        {
+            PlayToggleSound();
+        }
+
+        RefreshScreen();
+    }
     void StockpileChanged(DrillSnapshot saved)
     {
         if (!IsServer || !IsSpawned) return;
@@ -107,6 +133,7 @@ public sealed class DrillSystem : NetworkBehaviour
             }
         }
         UpdateInteraction();
+        UpdateFeedbackVisual();
     }
     void Commit(DrillSnapshot state)
     {
@@ -162,6 +189,10 @@ public sealed class DrillSystem : NetworkBehaviour
         state.Enabled = enabled;
         elapsed = 0f;
         Commit(state);
+        if (!Online)
+        {
+            PlayToggleSound();
+        }
     }
     bool CanUse(GameObject player)
     {
@@ -212,6 +243,7 @@ public sealed class DrillSystem : NetworkBehaviour
     }
     public void RefreshScreen()
     {
+        EnsureFeedbackVisual();
         var state = Current;
         if (statusText != null)
         {
@@ -219,6 +251,148 @@ public sealed class DrillSystem : NetworkBehaviour
             statusText.color = state.Enabled ? new Color(0.48f, 0.95f, 0.72f) : new Color(1f, 0.39f, 0.24f);
         }
         if (materialsText != null) materialsText.text = $"METAL = {state.Metal}\nGOLD = {state.Gold}\nPLASMA = {state.Plasma}";
+        if (hasVisualState &&
+            (state.Metal > lastVisualState.Metal || state.Gold > lastVisualState.Gold || state.Plasma > lastVisualState.Plasma))
+        {
+            resourceFlashUntil = Time.unscaledTime + 0.65f;
+        }
+        lastVisualState = state;
+        hasVisualState = true;
+        UpdateFeedbackVisual();
+    }
+
+    void EnsureFeedbackVisual()
+    {
+        if (feedbackBuilt || statusText == null || statusText.transform.parent == null)
+        {
+            return;
+        }
+
+        Transform parent = statusText.transform.parent;
+
+        Image barBackground = CreateFeedbackImage(parent, "Drill activity background");
+        RectTransform backgroundRect = barBackground.rectTransform;
+        backgroundRect.anchoredPosition = new Vector2(420f, 0f);
+        backgroundRect.sizeDelta = new Vector2(18f, 390f);
+        barBackground.color = new Color(0.03f, 0.07f, 0.08f, 0.95f);
+        activityBar = barBackground;
+
+        Image fill = CreateFeedbackImage(barBackground.transform, "Drill activity fill");
+        RectTransform fillRect = fill.rectTransform;
+        fillRect.anchorMin = Vector2.zero;
+        fillRect.anchorMax = Vector2.one;
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+        fill.type = Image.Type.Filled;
+        fill.fillMethod = Image.FillMethod.Vertical;
+        fill.fillOrigin = (int)Image.OriginVertical.Bottom;
+        fill.fillAmount = 1f;
+        fill.color = new Color(0.95f, 0.48f, 0.12f, 1f);
+        activityFill = fill;
+
+        Image flash = CreateFeedbackImage(barBackground.transform, "Drill resource flash");
+        RectTransform flashRect = flash.rectTransform;
+        flashRect.anchorMin = Vector2.zero;
+        flashRect.anchorMax = Vector2.one;
+        flashRect.offsetMin = Vector2.zero;
+        flashRect.offsetMax = Vector2.zero;
+        flash.color = Color.clear;
+        activityFlash = flash;
+
+        feedbackAudio = GetComponent<AudioSource>();
+        if (feedbackAudio == null)
+        {
+            feedbackAudio = gameObject.AddComponent<AudioSource>();
+        }
+
+        feedbackAudio.playOnAwake = false;
+        feedbackAudio.spatialBlend = 0.75f;
+        feedbackAudio.volume = 0.55f;
+        feedbackBuilt = true;
+    }
+
+    Image CreateFeedbackImage(Transform parent, string name)
+    {
+        GameObject imageObject = new GameObject(name, typeof(RectTransform), typeof(Image));
+        imageObject.transform.SetParent(parent, false);
+        Image image = imageObject.GetComponent<Image>();
+        image.sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f));
+        image.raycastTarget = false;
+        return image;
+    }
+
+    void UpdateFeedbackVisual()
+    {
+        if (!feedbackBuilt || activityBar == null || activityFill == null || activityFlash == null)
+        {
+            return;
+        }
+
+        bool active = Current.Enabled && !PowerUnavailable;
+        float timeRemaining = resourceFlashUntil - Time.unscaledTime;
+        if (timeRemaining > 0f)
+        {
+            float flashStrength = Mathf.Clamp01(timeRemaining / 0.65f);
+            activityFlash.color = new Color(1f, 0.86f, 0.24f, flashStrength);
+            activityBar.color = new Color(0.28f, 0.18f, 0.03f, 1f);
+            activityFill.color = new Color(1f, 0.86f, 0.25f, 1f);
+            return;
+        }
+
+        activityFlash.color = Color.clear;
+        if (PowerUnavailable)
+        {
+            activityFill.color = new Color(0.55f, 0.12f, 0.08f, 0.65f);
+            activityBar.color = new Color(0.08f, 0.03f, 0.03f, 0.95f);
+            return;
+        }
+
+        if (!active)
+        {
+            activityFill.color = new Color(0.34f, 0.42f, 0.42f, 1f);
+            activityBar.color = new Color(0.03f, 0.07f, 0.08f, 0.95f);
+            return;
+        }
+
+        float pulse = 0.5f + 0.5f * Mathf.Sin(Time.time * 1.8f);
+        activityFill.color = new Color(0.25f, 1f, 0.55f, Mathf.Lerp(0.5f, 1f, pulse));
+        activityBar.color = new Color(0.02f, 0.12f, 0.07f, Mathf.Lerp(0.65f, 0.95f, pulse));
+    }
+
+    void PlayToggleSound()
+    {
+        EnsureFeedbackVisual();
+        if (feedbackAudio == null)
+        {
+            return;
+        }
+
+        AudioClip clip = drillToggleSound != null ? drillToggleSound : GetGeneratedToggleSound();
+        feedbackAudio.PlayOneShot(clip);
+    }
+
+    AudioClip GetGeneratedToggleSound()
+    {
+        if (generatedToggleSound != null)
+        {
+            return generatedToggleSound;
+        }
+
+        const int sampleRate = 44100;
+        int sampleCount = Mathf.RoundToInt(sampleRate * 0.09f);
+        generatedToggleSound = AudioClip.Create("Procedural drill toggle", sampleCount, 1, sampleRate, false);
+        float[] samples = new float[sampleCount];
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float time = i / (float)sampleRate;
+            float envelope = Mathf.Exp(-time * 48f);
+            float tone = Mathf.Sin(time * Mathf.PI * 2f * 1450f) * 0.7f;
+            float thump = Mathf.Sin(time * Mathf.PI * 2f * 180f) * 0.3f;
+            samples[i] = (tone + thump) * envelope;
+        }
+
+        generatedToggleSound.SetData(samples, 0);
+        return generatedToggleSound;
     }
     void CreatePrompt()
     {

@@ -67,12 +67,16 @@ public class LockerInteractionNew : NetworkBehaviour
     private Transform currentLockerCameraTransform;
     private Transform playerTransform;
     private Transform playerCamera;
+    private Transform originalCameraParent;
     private CharacterController playerController;
     private PlayerController playerControllerScript;
     private Camera cam;
     private Vector3 originalCameraLocalPosition;
     private Quaternion originalCameraLocalRotation;
+    private Vector3 originalCameraWorldPosition;
+    private Quaternion originalCameraWorldRotation;
     private float originalFOV;
+    private bool playerControllerWasEnabled;
     private AudioSource audioSource;
     private readonly Dictionary<Renderer, bool> rendererOriginalState = new Dictionary<Renderer, bool>();
     private readonly Dictionary<ulong, bool> appliedHiddenClientIds = new Dictionary<ulong, bool>();
@@ -305,6 +309,9 @@ public class LockerInteractionNew : NetworkBehaviour
 
         originalCameraLocalPosition = playerCamera.localPosition;
         originalCameraLocalRotation = playerCamera.localRotation;
+        originalCameraParent = playerCamera.parent;
+        originalCameraWorldPosition = playerCamera.position;
+        originalCameraWorldRotation = playerCamera.rotation;
 
         if (cam != null)
         {
@@ -312,16 +319,21 @@ public class LockerInteractionNew : NetworkBehaviour
             cam.fieldOfView = hideFOV;
         }
 
-        playerCamera.position = currentLockerCameraTransform.position;
-        playerCamera.rotation = currentLockerCameraTransform.rotation;
+        // Detach the view while hidden so PlayerController head bob/look updates
+        // cannot move it back to the player's current pose.
+        playerCamera.SetParent(null, true);
+        playerCamera.SetPositionAndRotation(
+            currentLockerCameraTransform.position,
+            currentLockerCameraTransform.rotation);
 
         if (!IsNetworkSessionActive() && playerController != null)
         {
             playerController.enabled = false;
         }
 
-        if (!IsNetworkSessionActive() && playerControllerScript != null)
+        if (playerControllerScript != null)
         {
+            playerControllerWasEnabled = playerControllerScript.enabled;
             playerControllerScript.enabled = false;
         }
 
@@ -335,6 +347,20 @@ public class LockerInteractionNew : NetworkBehaviour
 
         HideInteractionPrompt();
         Debug.Log("<color=green>[Locker]</color> Camera locked at locker camera position");
+    }
+
+    void LateUpdate()
+    {
+        if (!isPlayerHidden || playerCamera == null || currentLockerCameraTransform == null)
+        {
+            return;
+        }
+
+        // Keep the camera on the authored locker pose even if another system
+        // tries to update the player's view during network synchronization.
+        playerCamera.SetPositionAndRotation(
+            currentLockerCameraTransform.position,
+            currentLockerCameraTransform.rotation);
     }
 
     void ExitLockerLocal(bool shouldPlaySound, bool killIfRush = true)
@@ -388,8 +414,18 @@ public class LockerInteractionNew : NetworkBehaviour
             return;
         }
 
-        playerCamera.localPosition = originalCameraLocalPosition;
-        playerCamera.localRotation = originalCameraLocalRotation;
+        if (originalCameraParent != null)
+        {
+            playerCamera.SetParent(originalCameraParent, false);
+            playerCamera.localPosition = originalCameraLocalPosition;
+            playerCamera.localRotation = originalCameraLocalRotation;
+        }
+        else
+        {
+            playerCamera.SetPositionAndRotation(
+                originalCameraWorldPosition,
+                originalCameraWorldRotation);
+        }
 
         if (cam != null)
         {
@@ -401,7 +437,7 @@ public class LockerInteractionNew : NetworkBehaviour
             playerController.enabled = true;
         }
 
-        if (!IsNetworkSessionActive() && playerControllerScript != null)
+        if (playerControllerScript != null && playerControllerWasEnabled)
         {
             playerControllerScript.enabled = true;
         }

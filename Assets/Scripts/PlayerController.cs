@@ -161,6 +161,7 @@ public class PlayerController : NetworkBehaviour
 
     private void Update()
     {
+        EnforceCursorState();
         if (NightTransition.BlocksGameplay) return;
         RecoverFromMapFall();
         if (PlayerSettingsUI.IsGameMenuOpen && movementState != null && IsSpawned && IsOwner)
@@ -177,6 +178,30 @@ public class PlayerController : NetworkBehaviour
         HandleMovement();
         HandleJump();
         HandleSprint();
+    }
+
+    private void EnforceCursorState()
+    {
+        bool isLocal = !IsSpawned || IsOwner;
+        if (!isLocal)
+        {
+            return;
+        }
+
+        string activeSceneName = SceneManager.GetActiveScene().name;
+        bool isMenuScene = activeSceneName == "Menu" || activeSceneName == "MainMenu";
+        bool shouldShowCursor = isMenuScene || PlayerSettingsUI.IsGameMenuOpen;
+
+        if (shouldShowCursor)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
     }
 
     private void LateUpdate()
