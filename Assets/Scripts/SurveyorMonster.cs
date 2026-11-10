@@ -67,6 +67,9 @@ public class SurveyorMonster : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
+    public NetworkVariable<bool> YellerMoving=new NetworkVariable<bool>();
+    public NetworkVariable<Vector3> YellerPosition=new NetworkVariable<Vector3>();
+    public NetworkVariable<float> YellerYaw=new NetworkVariable<float>();
     private float currentDistance;
     private float timeSinceLastRadarCheck = 0f;
     private bool isRetreating = false;
@@ -182,8 +185,15 @@ public class SurveyorMonster : NetworkBehaviour
         UpdateOfflineState();
     }
 
+    readonly YellerPursuit yeller=new YellerPursuit();
+    bool FollowYeller(){
+        if(yeller.Tick(this,null,aggressiveSpeed,out var called)){playerTransform=called.transform;isCurrentlyMoving=true;currentDistance=Vector3.Distance(transform.position,objectiveTransform.position);UpdateMovementSound();return true;}
+        if(yeller.Released){currentDistance=Vector3.Distance(transform.position,objectiveTransform.position);isCurrentlyMoving=false;UpdateMovementSound();}
+        return false;
+    }
     void UpdateServerState()
     {
+        if(FollowYeller())return;
         bool isPowerOut = PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut;
 
         if (isPowerOut)
@@ -227,6 +237,7 @@ public class SurveyorMonster : NetworkBehaviour
 
     void UpdateOfflineState()
     {
+        if(FollowYeller())return;
         bool isPowerOut = PowerSystem.Instance != null && PowerSystem.Instance.IsPowerOut;
 
         if (isPowerOut)
@@ -519,6 +530,7 @@ public class SurveyorMonster : NetworkBehaviour
 
     void PushNetworkStateFromServer()
     {
+        YellerMoving.Value=yeller.WasAttracted;YellerPosition.Value=transform.position;YellerYaw.Value=transform.eulerAngles.y;
         CurrentDistanceNetwork.Value = currentDistance;
         IsRetreatingNetwork.Value = isRetreating;
         TimeSinceLastRadarCheckNetwork.Value = timeSinceLastRadarCheck;
@@ -526,6 +538,7 @@ public class SurveyorMonster : NetworkBehaviour
 
     void ApplyNetworkStateToClient()
     {
+        if(YellerMoving.Value){transform.position=YellerPosition.Value;transform.rotation=Quaternion.Euler(0,YellerYaw.Value,0);currentDistance=CurrentDistanceNetwork.Value;isCurrentlyMoving=true;return;}
         currentDistance = CurrentDistanceNetwork.Value;
         isRetreating = IsRetreatingNetwork.Value;
         timeSinceLastRadarCheck = TimeSinceLastRadarCheckNetwork.Value;

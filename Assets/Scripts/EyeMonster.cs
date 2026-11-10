@@ -43,6 +43,7 @@ public sealed class EyeMonster : NetworkBehaviour
     float nextReport, nextStep, nextDestination, gravity;
     bool previouslyNetworked, offlineReady;
     int localMode;
+    readonly YellerPursuit yeller=new YellerPursuit();
     bool ActiveSession => Unity.Netcode.NetworkManager.Singleton != null && Unity.Netcode.NetworkManager.Singleton.IsListening;
 
     void Awake()
@@ -116,6 +117,8 @@ public sealed class EyeMonster : NetworkBehaviour
             var life=player!=null?player.GetComponent<OxygenSystem>():null;
             bool alive=player!=null&&(life==null||!life.IsDead());
             bool watched=alive&&CameraSees(camera,player.transform);
+            if(yeller.Tick(this,motor,chaseSpeed,out var called)){localMode=(int)Mode.Chasing;movedThisFrame=true;Present();return;}
+            if(yeller.Released)PickDestination();
             TickMovement(alive?player.transform:null,watched);
             if(alive&&CanKill(player.transform)) life?.MarkDeadFromMonster();
         }
@@ -130,6 +133,8 @@ public sealed class EyeMonster : NetworkBehaviour
     }
     void TickServer()
     {
+        if(yeller.Tick(this,motor,chaseSpeed,out var called)){localMode=(int)Mode.Chasing;movedThisFrame=true;Target.Value=called.OwnerClientId;State.Value=localMode;Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;AnimationMode.Value=localMode;AnimationPhase.Value=(AnimationPhase.Value+Time.deltaTime*1.4f/Mathf.Max(.1f,chaseAnimation!=null?chaseAnimation.length:1))%1f;return;}
+        if(yeller.Released){Target.Value=ulong.MaxValue;PickDestination();}
         bool watched=false; NetworkObject nearest=null; float best=chaseRange*chaseRange;
         foreach(var client in NetworkManager.ConnectedClientsList)
         {
@@ -137,7 +142,7 @@ public sealed class EyeMonster : NetworkBehaviour
             // Missing/stalled reports freeze conservatively rather than allowing blind network kills.
             if(!observers.TryGetValue(client.ClientId,out var report)||Time.unscaledTime-report.time>0.5f||report.visible) watched=true;
             float d=(p.transform.position-transform.position).sqrMagnitude;
-            if(d<best) { best=d; nearest=p; }
+            if(d<best && (!yeller.Released || YellerPursuit.Sees(this,p.GetComponent<PlayerController>(),chaseRange))) { best=d; nearest=p; }
         }
         TickMovement(nearest!=null?nearest.transform:null,watched);
         Target.Value=nearest!=null?nearest.OwnerClientId:ulong.MaxValue;

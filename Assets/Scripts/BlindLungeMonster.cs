@@ -21,6 +21,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
     AudioClip beat,impact;
     AudioSource lungeAudio;
     AudioClip generatedLunge;
+    readonly YellerPursuit yeller=new YellerPursuit();
     readonly TerrainRockRoute roamRoute=new TerrainRockRoute();
     readonly System.Random roamRandom=new System.Random();
     Vector3 home,wanderDestination;
@@ -93,6 +94,11 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         if (NightTransition.BlocksGameplay) return;
         if(Online){if(!IsSpawned)return;if(!IsServer){phase=(Phase)State.Value;transform.SetPositionAndRotation(Vector3.Lerp(transform.position,Position.Value,1-Mathf.Exp(-25*Time.deltaTime)),Quaternion.Euler(0,Yaw.Value,0));return;}}
         else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();InitializeRoaming();heartbeat.Play();offlineReady=true;}}
+        if(yeller.Tick(this,motor,lungeSpeed,out var called)){
+            phase=Phase.Lunging;heard=false;TickFlights();
+            if(Online){Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;State.Value=(int)phase;}return;
+        }
+        if(yeller.Released){phase=Phase.Listening;heard=false;hasLastSound=false;remaining=0;priorityUntil=0;memoryUntil=0;if(YellerPursuit.Sees(this,yeller.LastTarget,hearingRange))HearNoise(yeller.LastTarget.transform.position,hearingRange);}
         ObserveMovement();TickFlights();TickMovement();
         if(Online){Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;State.Value=(int)phase;}
     }

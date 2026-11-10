@@ -34,7 +34,7 @@ public sealed class SandStalker : NetworkBehaviour
     int seenCue;
     double dormantUntil;
     Phase phase;
-    bool wasOnline, strikePending, dodged, ready, offlineReady;
+    bool wasOnline, strikePending, dodged, ready, offlineReady, yellerCalled;
     readonly TerrainRockRoute route = new TerrainRockRoute();
     readonly List<PlayerController> players = new List<PlayerController>();
     bool Online => NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening;
@@ -211,17 +211,20 @@ public sealed class SandStalker : NetworkBehaviour
             Snap(Ground(home)); phase = Phase.Roaming; nextScan = 0; until = 0;
             if (Online) DormantUntil.Value = 0;
         }
+        bool attracted=Yeller.TryAttract(this,out var screaming,out var caller);
+        if(attracted){if(!yellerCalled||target!=screaming){strikePending=dodged=false;}target=screaming;phase=Phase.Chasing;yellerCalled=true;}
+        else if(yellerCalled){yellerCalled=false;strikePending=dodged=false;if(Visible(target,sightRange)){Warn();}else{target=null;phase=Phase.Roaming;until=0;nextWander=0;}}
         if (phase != Phase.Roaming && !Living(target)) { Rest(burrow ? BurrowRespawnSeconds : 5); return; }
         if (!motor.enabled) motor.enabled = true;
         if (Time.time >= nextScan) { nextScan = Time.time + .1f; GatherPlayers(); }
         if (phase == Phase.Roaming && Time.time >= until) {
             target = FindTarget(); if (target != null) { nextHandoff = Time.time + 4; Warn(); }
         }
-        if (!burrow && (phase == Phase.Chasing || phase == Phase.Warning) && Lit()) {
+        if (!attracted && !burrow && (phase == Phase.Chasing || phase == Phase.Warning) && Lit()) {
             phase = Phase.Retreating; until = Time.time + 2; ChooseRetreat();
         }
         if (phase == Phase.Warning && Time.time >= until) phase = Phase.Chasing;
-        if (!burrow && phase == Phase.Chasing && Time.time >= nextHandoff) {
+        if (!attracted && !burrow && phase == Phase.Chasing && Time.time >= nextHandoff) {
             PlayerController other = null; float nearest = 12;
             foreach (var candidate in players) {
                 if (candidate == target || !Living(candidate) || Vector3.Distance(candidate.transform.position, target.transform.position) > 6) continue;

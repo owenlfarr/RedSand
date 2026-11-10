@@ -354,6 +354,9 @@ public class ZombieAI : NetworkBehaviour
         UpdateDistanceVisibility();
     }
 
+    readonly YellerPursuit yeller=new YellerPursuit();
+    bool FollowYeller(){if(yeller.Tick(this,controller,chaseSpeed,out var target)){playerTransform=target.transform;isChasing=true;isStalking=false;AlignToGround();return true;}if(yeller.Released){isChasing=false;isStalking=false;currentMoveDirection=Vector3.zero;}return false;}
+
     void UpdateServerAI()
     {
         if (IsNeutralizedNetwork.Value)
@@ -361,6 +364,7 @@ public class ZombieAI : NetworkBehaviour
             return;
         }
 
+        if (FollowYeller()) return;
         RefreshLocalPlayerReference();
 
         if (useFOVPriority)
@@ -398,6 +402,7 @@ public class ZombieAI : NetworkBehaviour
             controller.enabled = true;
         }
 
+        if (FollowYeller()) return;
         RefreshLocalPlayerReference();
 
         if (useFOVPriority)

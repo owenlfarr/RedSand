@@ -1,5 +1,12 @@
 # RedSand project context
 
+## Yeller rock bug (2026-11-09)
+
+- Added eight small orange Yeller cube placeholders beside painted rocks in Night 5. Server-validated 1.524 m attachment range, clear line of sight, single immutable 15-second scream deadline, shoulder-following visual, positional audio and spent-once lifecycle. Duplicate bugs cannot stack on one victim; independent concurrent screams select the nearest active victim per monster. Death/disconnect/despawn stops the effect.
+- Active motion, Eye, lunge, Watcher, Surveyor, Whisper and Burrow monsters converge under host authority, then resume their normal perception/patrol/chase behavior. Dormant/neutralized monsters keep their cooldowns; Burrow retains underground movement/jump behavior. Existing bunker exclusions apply. Added explicit Surveyor lure position/yaw replication; no NetworkBehaviour components were added to existing monsters.
+- Fresh standalone NGO/Unity Transport test passed 39 assertions for range, immutable duration, all seven moving archetypes, attachment/audio/Surveyor replication, late join, expiry, occlusion, victim death and disconnect. Final role logs contain no managed exceptions or NGO spawn failures. Fixture and all production scenes built with zero errors; canonical scene identity preflight passed. Existing Night 5 map and prior object identities preserved.
+- Evidence: Logs/YellerVerification.json, Logs/Yeller-final-pass-*.log, Yeller scene/build result files. Notes/reproduction: Assets/_Project/Yeller.md; YellerChecks.InstallAndBuild and YellerNetworkTest. Real Relay latency and final human audio balance remain manual checks.
+
 ## Nights 4/5 and seamless campaign transfers (2026-11-09)
 
 - Authored Night 4 and Night 5 from the saved Night 3 map; preserved geometry, night duration and equipment/resource mechanics. Night 3 -> 4 -> 5 -> MainMenu. Lunge and PA stay restricted to Night 3 onward. Existing speeds increase 5% per night, with small pursuit/reaction adjustments. Outages are 23%/26% per existing 55-second check; radar uses stay at 12 from Night 4 onward.

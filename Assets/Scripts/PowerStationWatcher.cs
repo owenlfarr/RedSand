@@ -121,6 +121,7 @@ public sealed class PowerStationWatcher : NetworkBehaviour
         UpdateLocalEncounter();
     }
 
+    readonly YellerPursuit yeller=new YellerPursuit();
     void TickServer()
     {
         if (State.Value == (int)Phase.Dormant)
@@ -138,6 +139,8 @@ public sealed class PowerStationWatcher : NetworkBehaviour
             }
             return;
         }
+        if(yeller.Tick(this,motor,roamSpeed*2,out var called)){if(State.Value!=(int)Phase.Dormant)State.Value=(int)Phase.Roaming;Target.Value=ulong.MaxValue;Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;return;}
+        if(yeller.Released){State.Value=(int)Phase.Roaming;Target.Value=ulong.MaxValue;anchored=false;PickDestination();}
         if (State.Value == (int)Phase.Watching) TickEncounter();
         else
         {
@@ -244,6 +247,8 @@ public sealed class PowerStationWatcher : NetworkBehaviour
         }
         if (Clock >= GraceEnds + RequiredStillSeconds.Value) Disappear();
     }
+
+    public void KillFromYeller(PlayerController player){if(NetworkActive)FailEncounter(player.NetworkObject);else{player.GetComponent<OxygenSystem>()?.MarkDeadFromMonster();DisappearOffline();}}
 
     void FailEncounter(NetworkObject player)
     {
@@ -378,6 +383,8 @@ public sealed class PowerStationWatcher : NetworkBehaviour
             PickDestination();
             Debug.Log("[Watcher] Direct scene Play: local patrol and encounters enabled.");
         }
+        if(offlinePhase!=Phase.Dormant&&yeller.Tick(this,motor,roamSpeed*2,out var called)){if(offlinePhase!=Phase.Dormant)offlinePhase=Phase.Roaming;offlineVictim=null;return;}
+        if(yeller.Released){offlinePhase=Phase.Roaming;offlineVictim=null;anchored=false;PickDestination();}
         if (offlinePhase == Phase.Dormant)
         {
             if (Time.timeAsDouble >= offlineRespawn)
