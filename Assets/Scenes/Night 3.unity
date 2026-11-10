@@ -28642,7 +28642,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4168740404206898596, guid: 5dd84cc1ce6ff784ca8b5bf267a8488e, type: 3}
       propertyPath: GlobalObjectIdHash
-      value: 61371443
+      value: 2537135025
       objectReference: {fileID: 0}
     - target: {fileID: 4168740404206898596, guid: 5dd84cc1ce6ff784ca8b5bf267a8488e, type: 3}
       propertyPath: InScenePlacedSourceGlobalObjectIdHash

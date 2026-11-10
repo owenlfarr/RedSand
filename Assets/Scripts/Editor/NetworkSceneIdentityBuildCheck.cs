@@ -42,6 +42,24 @@ public sealed class NetworkSceneIdentityBuildCheck : IPreprocessBuildWithReport
                     throw new BuildFailedException($"Stale or duplicate Netcode scene ID in {scene.path}, object {block.Groups[1].Value}. " +
                         "Open and save this scene in Edit Mode to regenerate its NetworkObject IDs, then rebuild all players.");
             }
+
+            // Prefab instances serialize NGO identities as property overrides, rather
+            // than MonoBehaviour blocks. Copied scenes must regenerate these too.
+            foreach (Match instance in Regex.Matches(yaml,
+                @"^--- !u!1001 &(\d+)[^\r\n]*\r?\n(.*?)(?=^--- !u!|\z)",
+                RegexOptions.Multiline | RegexOptions.Singleline))
+            {
+                foreach (Match field in Regex.Matches(instance.Groups[2].Value,
+                    @"- target: \{fileID: (\d+), guid: [a-f0-9]+, type: 3\}\s+propertyPath: GlobalObjectIdHash\s+value: (\d+)"))
+                {
+                    uint serialized = uint.Parse(field.Groups[2].Value);
+                    string globalId = $"GlobalObjectId_V1-2-{guid}-{field.Groups[1].Value}-{instance.Groups[1].Value}";
+                    uint expected = (uint)hashString.Invoke(null, new object[] { globalId });
+                    if (serialized != expected || !hashes.Add(serialized))
+                        throw new BuildFailedException($"Stale or duplicate prefab Netcode scene ID in {scene.path}, instance {instance.Groups[1].Value}. " +
+                            "Run Tools/Networking/Repair Scene Network IDs in Edit Mode, then rebuild all players.");
+                }
+            }
         }
     }
 }

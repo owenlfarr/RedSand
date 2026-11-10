@@ -77,7 +77,7 @@ public sealed class BlindLungeMonster : NetworkBehaviour
             NetworkManager.SceneManager.OnSynchronizeComplete+=SynchronizeRocks;
             NetworkManager.OnClientDisconnectCallback+=ForgetPlayer;
         }else transform.SetPositionAndRotation(Position.Value,Quaternion.Euler(0,Yaw.Value,0));
-        heartbeat.time=(float)(NetworkManager.ServerTime.Time%beat.length);heartbeat.Play();
+        UpdateHeartbeat();
     }
     void SynchronizeRocks(ulong id){
         if(!IsServer||id==NetworkManager.LocalClientId)return;
@@ -90,10 +90,21 @@ public sealed class BlindLungeMonster : NetworkBehaviour
         motor.enabled=false;heartbeat.Stop();lungeAudio.Stop();flights.Clear();groundSearches.Clear();
         foreach(var v in rockVisuals.Values)if(v!=null)Destroy(v.gameObject);rockVisuals.Clear();
     }
+    public bool HeartbeatAudible=>heartbeat!=null&&heartbeat.isPlaying;
+    void UpdateHeartbeat(){
+        PlayerController player=null;
+        if(Online){var local=NetworkManager.Singleton.LocalClient?.PlayerObject;if(local!=null&&local.IsSpawned)player=local.GetComponent<PlayerController>();}
+        else if(!previouslyNetworked)player=FindFirstObjectByType<PlayerController>();
+        var life=player!=null?player.GetComponent<OxygenSystem>():null;
+        bool audible=!NightTransition.BlocksGameplay&&isActiveAndEnabled&&(!Online||IsSpawned)&&player!=null&&player.playerCamera!=null&&player.playerCamera.gameObject.activeInHierarchy&&player.playerCamera.GetComponent<Camera>()?.enabled==true&&life!=null&&!life.IsDead()&&!life.IsInsideBunkerZone()&&Vector3.SqrMagnitude(player.playerCamera.position-heartbeat.transform.position)<heartbeat.maxDistance*heartbeat.maxDistance;
+        if(audible&&!heartbeat.isPlaying){heartbeat.time=(float)(Now%beat.length);heartbeat.Play();}
+        else if(!audible&&heartbeat.isPlaying)heartbeat.Stop();
+    }
     void Update(){
+        UpdateHeartbeat();
         if (NightTransition.BlocksGameplay) return;
         if(Online){if(!IsSpawned)return;if(!IsServer){phase=(Phase)State.Value;transform.SetPositionAndRotation(Vector3.Lerp(transform.position,Position.Value,1-Mathf.Exp(-25*Time.deltaTime)),Quaternion.Euler(0,Yaw.Value,0));return;}}
-        else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();InitializeRoaming();heartbeat.Play();offlineReady=true;}}
+        else {if(previouslyNetworked)return;if(!offlineReady){motor.enabled=true;SnapToGround();InitializeRoaming();offlineReady=true;}}
         if(yeller.Tick(this,motor,lungeSpeed,out var called)){
             phase=Phase.Lunging;heard=false;TickFlights();
             if(Online){Position.Value=transform.position;Yaw.Value=transform.eulerAngles.y;State.Value=(int)phase;}return;

@@ -23,12 +23,18 @@ public sealed class NightTransition : MonoBehaviour
     public int EightAmCards {get;private set;}
     public int NightCards {get;private set;}
     public bool AllPeersCovered {get;private set;}
-    Image curtain;TMP_Text title;NetworkManager manager;CustomMessagingManager messages;
+    Image curtain;TMP_Text title;Camera loadingCamera;NetworkManager manager;CustomMessagingManager messages;
     Coroutine animation;readonly HashSet<ulong> covered=new HashSet<ulong>();
     int token,nextToken;string expected="";bool busy,localCovered,readySent,showEight,wasOnline,revealing;float nextBroadcast,coverStarted;
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]static void Ensure(){if(instance!=null)return;var root=new GameObject("Persistent Night Transition");DontDestroyOnLoad(root);instance=root.AddComponent<NightTransition>();}
     void Awake(){instance=this;Build();SceneManager.sceneLoaded+=SceneLoaded;}
     void Build(){
+        // Keep a black rendering target alive between the outgoing scene camera
+        // and the incoming owned player camera. No listener is attached here.
+        var view=new GameObject("Transition black camera",typeof(Camera));view.transform.SetParent(transform,false);
+        loadingCamera=view.GetComponent<Camera>();loadingCamera.clearFlags=CameraClearFlags.SolidColor;
+        loadingCamera.backgroundColor=Color.black;loadingCamera.cullingMask=0;loadingCamera.depth=-100;
+        loadingCamera.nearClipPlane=.01f;loadingCamera.farClipPlane=1;loadingCamera.enabled=false;
         var root=new GameObject("Transition Canvas",typeof(RectTransform),typeof(Canvas),typeof(CanvasScaler),typeof(GraphicRaycaster));root.transform.SetParent(transform,false);
         var canvas=root.GetComponent<Canvas>();canvas.renderMode=RenderMode.ScreenSpaceOverlay;canvas.sortingOrder=32760;
         var scaler=root.GetComponent<CanvasScaler>();scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;scaler.referenceResolution=new Vector2(1920,1080);scaler.screenMatchMode=CanvasScaler.ScreenMatchMode.Expand;
@@ -51,6 +57,7 @@ public sealed class NightTransition : MonoBehaviour
         }
         if(messages!=null&&localCovered&&!readySent){SendReady();}
     }
+    void LateUpdate(){if(loadingCamera!=null)loadingCamera.enabled=busy||(curtain!=null&&curtain.color.a>0);}
     void SceneLoaded(Scene scene,LoadSceneMode mode){
         if(mode!=LoadSceneMode.Single)return;
         if(IsNightScene(scene.name)&&(!string.IsNullOrEmpty(expected)||scene.path.StartsWith("Assets/Scenes/",StringComparison.Ordinal))){
