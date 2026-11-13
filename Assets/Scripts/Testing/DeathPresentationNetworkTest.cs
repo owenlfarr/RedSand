@@ -39,6 +39,7 @@ public sealed class DeathPresentationNetworkTest : NetworkBehaviour
         yield return null;
         var manager = Unity.Netcode.NetworkManager.Singleton;
         manager.NetworkConfig.ConnectionApproval = false;
+        manager.gameObject.AddComponent<ReviveTestInputFreeze>();
         manager.GetComponent<UnityTransport>().SetConnectionData("127.0.0.1", 17852, "127.0.0.1");
         if (role == "host") manager.StartHost(); else manager.StartClient();
         float expires = Time.realtimeSinceStartup + 180f;
@@ -130,8 +131,8 @@ public sealed class DeathPresentationNetworkTest : NetworkBehaviour
 
     IEnumerator Run()
     {
-        yield return WaitFor(() => NetworkManager.ConnectedClientsIds.Count == 3, 30f, "host and two real clients connected");
-        ulong remote = NetworkManager.ConnectedClientsIds.First(id => id != 0);
+        yield return WaitFor(() => NetworkManager.ConnectedClientsIds.Count == 4, 30f, "host and three real clients connected");
+        ulong remote = NetworkManager.ConnectedClientsIds.Max();
         for (int test = 1; test <= 9; test++)
         {
             Phase.Value = 0;
@@ -165,9 +166,10 @@ public sealed class DeathPresentationNetworkTest : NetworkBehaviour
                 monster.transform.position = victim.transform.position + Vector3.back * 1.2f;
                 motor.enabled = true;
                 // Use the actual CharacterController hit callback, not a replacement kill implementation.
+                Physics.SyncTransforms();
                 motor.Move(Vector3.forward * 0.8f);
                 yield return null;
-                Check(victim.GetComponent<NetworkOxygenState>().IsDead.Value, "actual Movement Detected collision kills intended victim " + test);
+                Check(victim.GetComponent<NetworkOxygenState>().IsDead.Value, "actual Movement Detected collision kills intended victim " + test + " victim=" + victim.transform.position + " monster=" + monster.transform.position + " blocked=" + NightTransition.BlocksGameplay);
             }
             else if (test == 6) victim.GetComponent<NetworkOxygenState>().CurrentOxygen.Value = 0f;
             else if (test >= 8)
@@ -185,7 +187,7 @@ public sealed class DeathPresentationNetworkTest : NetworkBehaviour
                 victim.GetComponent<OxygenSystem>().MarkDeadFromMonster();
                 TriggerPresentationClientRpc(test, new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new[] { Victim.Value } } });
             }
-            yield return WaitFor(() => ready.Count == 3, 13f, "all peers completed case " + test);
+            yield return WaitFor(() => ready.Count == 4, 13f, "all peers completed case " + test);
             if (test >= 8)
             {
                 typeof(PowerStationWatcher).GetMethod("PlayDeathJumpscareClientRpc", BindingFlags.Instance | BindingFlags.NonPublic)
@@ -198,7 +200,7 @@ public sealed class DeathPresentationNetworkTest : NetworkBehaviour
             yield return new WaitForSecondsRealtime(0.3f);
         }
         Debug.Log("[DEATH TEST] HOST PASS " + assertions + " local assertions plus per-peer results.");
-        File.WriteAllText("Logs/DeathPresentation-host-PASS.txt", assertions + " host assertions; nine scenarios verified by all three peers, including host/client Watcher kills.");
+        File.WriteAllText("Logs/DeathPresentation-host-PASS.txt", assertions + " host assertions; nine scenarios verified by all four peers, including host/client Watcher kills.");
         FinishClientRpc();
         yield return new WaitForSecondsRealtime(0.8f);
         Application.Quit(0);

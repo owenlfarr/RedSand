@@ -146,7 +146,7 @@ public sealed class CrewStressMonitor : MonoBehaviour
             string color = stress == 3 ? "FF5555" : stress == 2 ? "FFAA44" : stress == 1 ? "FFE28A" : "8AE0B1";
             result.Append(name).Append("  <color=#").Append(color).Append('>')
                 .Append(stress == 0 ? "CALM 0/3" : "STRESSED " + stress + "/3").Append("</color>");
-            if (++rows == 3) break; // Current party limit; fits the screen and UTF-8 snapshot.
+            if (++rows == Networking.RelayPartyManager.LobbyPlayerLimit) break; // Four rows fit the screen and UTF-8 snapshot.
         }
         return result.Length == 0 ? "NO LIVING CREW OUTSIDE\nNO SURFACE SIGNALS" : result.ToString();
     }

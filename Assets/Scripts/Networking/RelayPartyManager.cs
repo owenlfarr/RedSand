@@ -28,7 +28,7 @@ namespace Networking
         [Tooltip("Temporary playtest override: host starts directly on Night 3 without changing saved unlocks")]
         [SerializeField] private bool playtestStartNightThree;
         public string SelectedStartingScene => playtestStartNightThree ? "Night 3" : NightStartUnlock.StartingScene;
-        [SerializeField] private int maxConnections = 3;
+        [SerializeField] private int maxConnections = 4;
         [SerializeField] private string relayConnectionType = "dtls";
 
         [Header("UI Bindings (Optional)")]
@@ -53,9 +53,11 @@ namespace Networking
         [SerializeField] private GameObject player1Visual;
         [SerializeField] private GameObject player2Visual;
         [SerializeField] private GameObject player3Visual;
+        [SerializeField] private GameObject player4Visual;
         [SerializeField] private TextMeshPro player1NameText;
         [SerializeField] private TextMeshPro player2NameText;
         [SerializeField] private TextMeshPro player3NameText;
+        [SerializeField] private TextMeshPro player4NameText;
         [SerializeField] private bool disableAstronautAnimatorsInMenu = false;
         [SerializeField] private bool floatAstronautsInMenu = true;
         [SerializeField] private Vector2 astronautFloatBounds = new Vector2(1.25f, 0.65f);
@@ -92,14 +94,14 @@ namespace Networking
         private Coroutine spawnPlayersAfterLoadCoroutine;
         private Coroutine sendLobbyNameWhenReadyCoroutine;
         private bool sentInitialNameAfterConnect;
-        private readonly GameObject[] astronautVisualSlots = new GameObject[3];
-        private readonly Vector3[] astronautBaseLocalPositions = new Vector3[3];
-        private readonly Quaternion[] astronautBaseLocalRotations = new Quaternion[3];
-        private readonly Vector2[] astronautFloatOffsets = new Vector2[3];
-        private readonly Vector2[] astronautFloatVelocities = new Vector2[3];
-        private readonly float[] astronautRotationOffsets = new float[3];
-        private readonly float[] astronautRotationSpeeds = new float[3];
-        private readonly bool[] astronautFloatInitialized = new bool[3];
+        private readonly GameObject[] astronautVisualSlots = new GameObject[LobbyPlayerLimit];
+        private readonly Vector3[] astronautBaseLocalPositions = new Vector3[LobbyPlayerLimit];
+        private readonly Quaternion[] astronautBaseLocalRotations = new Quaternion[LobbyPlayerLimit];
+        private readonly Vector2[] astronautFloatOffsets = new Vector2[LobbyPlayerLimit];
+        private readonly Vector2[] astronautFloatVelocities = new Vector2[LobbyPlayerLimit];
+        private readonly float[] astronautRotationOffsets = new float[LobbyPlayerLimit];
+        private readonly float[] astronautRotationSpeeds = new float[LobbyPlayerLimit];
+        private readonly bool[] astronautFloatInitialized = new bool[LobbyPlayerLimit];
         private readonly Dictionary<ulong, string> lobbyPlayerNames = new Dictionary<ulong, string>();
         private string cachedLocalUserName = "";
         private bool lobbyNameMessagesRegistered;
@@ -107,7 +109,7 @@ namespace Networking
 
         private const string LobbyNameUpdateMessage = "RelayPartyNameUpdate";
         private const string LobbyNameBroadcastMessage = "RelayPartyNameBroadcast";
-        private const int HardLobbyPlayerLimit = 3;
+        public const int LobbyPlayerLimit = 4;
         private const string MouseSensitivityPrefsKey = "MouseSensitivity";
 
         // Kept as a fallback if an older scene or inspector state has no player prefab at match start.
@@ -1002,7 +1004,7 @@ namespace Networking
 
         private int GetLobbyPlayerLimit()
         {
-            return HardLobbyPlayerLimit;
+            return LobbyPlayerLimit;
         }
 
         private int GetRelayConnectionLimit()
@@ -1736,9 +1738,25 @@ namespace Networking
                 if (t != null) player3Visual = t.gameObject;
             }
 
+            if (player4Visual == null && player1Visual != null && player2Visual != null && player3Visual != null)
+            {
+                // Reuse the menu-only model, within the existing display bounds.
+                Vector3 first = player1Visual.transform.localPosition;
+                Vector3 last = player3Visual.transform.localPosition;
+                player4Visual = Instantiate(player3Visual, player3Visual.transform.parent);
+                player4Visual.name = "Player4";
+                player2Visual.transform.localPosition = Vector3.Lerp(first, last, 1f / 3f);
+                player3Visual.transform.localPosition = Vector3.Lerp(first, last, 2f / 3f);
+                player4Visual.transform.localPosition = last;
+                player4NameText = player4Visual.GetComponentInChildren<TextMeshPro>(true);
+                if (player4NameText != null) player4NameText.name = "Player4NameTag";
+                InitializeAstronautFloatSlots(true);
+            }
+
             player1NameText = EnsureNameTag(player1Visual, player1NameText, "Player1NameTag");
             player2NameText = EnsureNameTag(player2Visual, player2NameText, "Player2NameTag");
             player3NameText = EnsureNameTag(player3Visual, player3NameText, "Player3NameTag");
+            player4NameText = EnsureNameTag(player4Visual, player4NameText, "Player4NameTag");
             InitializeAstronautFloatSlots(false);
 
             if (disableAstronautAnimatorsInMenu)
@@ -1746,6 +1764,7 @@ namespace Networking
                 DisableAstronautAnimator(player1Visual);
                 DisableAstronautAnimator(player2Visual);
                 DisableAstronautAnimator(player3Visual);
+                DisableAstronautAnimator(player4Visual);
             }
         }
 
@@ -1862,11 +1881,12 @@ namespace Networking
             }
 
             List<ulong> lobbyClientIds = inActiveLobby ? GetOrderedLobbyClientIds() : new List<ulong>();
-            int playerCount = inActiveLobby ? Mathf.Clamp(lobbyClientIds.Count, 1, 3) : 1;
+            int playerCount = inActiveLobby ? Mathf.Clamp(lobbyClientIds.Count, 1, LobbyPlayerLimit) : 1;
 
             string slot1Name = localName;
             string slot2Name = "Player 2";
             string slot3Name = "Player 3";
+            string slot4Name = "Player 4";
 
             if (inActiveLobby && lobbyClientIds.Count > 0)
             {
@@ -1882,9 +1902,12 @@ namespace Networking
                 }
             }
 
+            if (lobbyClientIds.Count > 3) slot4Name = GetLobbyDisplayName(lobbyClientIds[3], "Player 4");
+
             SetAstronautSlot(player1Visual, player1NameText, playerCount >= 1, slot1Name);
             SetAstronautSlot(player2Visual, player2NameText, playerCount >= 2, slot2Name);
             SetAstronautSlot(player3Visual, player3NameText, playerCount >= 3, slot3Name);
+            SetAstronautSlot(player4Visual, player4NameText, playerCount >= 4, slot4Name);
         }
 
         private void InitializeAstronautFloatSlots(bool force)
@@ -1892,6 +1915,7 @@ namespace Networking
             astronautVisualSlots[0] = player1Visual;
             astronautVisualSlots[1] = player2Visual;
             astronautVisualSlots[2] = player3Visual;
+            astronautVisualSlots[3] = player4Visual;
 
             for (int i = 0; i < astronautVisualSlots.Length; i++)
             {
@@ -1973,6 +1997,7 @@ namespace Networking
             KeepNameTagReadable(player1NameText);
             KeepNameTagReadable(player2NameText);
             KeepNameTagReadable(player3NameText);
+            KeepNameTagReadable(player4NameText);
         }
 
         private static void KeepNameTagReadable(TextMeshPro nameText)
@@ -2314,7 +2339,7 @@ namespace Networking
                 count = nm.ConnectedClients.Count;
             }
 
-            return Mathf.Clamp(count, 1, 3);
+            return Mathf.Clamp(count, 1, LobbyPlayerLimit);
         }
 
         private static void DisableAstronautAnimator(GameObject visual)

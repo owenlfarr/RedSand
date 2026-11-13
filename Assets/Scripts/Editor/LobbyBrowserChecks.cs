@@ -60,7 +60,9 @@ public static class LobbyBrowserChecks
     }
 
     [MenuItem("Tools/Lobby Browser/Run Lifecycle Tests")]
-    public static async void RunTests()
+    public static async void RunTests() => await RunTestsAsync();
+
+    public static async Task RunTestsAsync()
     {
         checks = 0;
         try
@@ -68,20 +70,20 @@ public static class LobbyBrowserChecks
             const string version = "test-build", code = "CODE123";
             var backend = new Fake();
             var ad = new LobbyAdvertisement(backend);
-            Check(await ad.Publish(false, "Private Host", code, version, 1, 3), "private host succeeds without directory");
+            Check(await ad.Publish(false, "Private Host", code, version, 1, RelayPartyManager.LobbyPlayerLimit), "private host succeeds without directory");
             Check(backend.Calls.Count == 0 && !ad.IsListed, "private code never published");
-            Check(await ad.Publish(true, "Owen", code, version, 1, 3), "public publish succeeds");
+            Check(await ad.Publish(true, "Owen", code, version, 1, RelayPartyManager.LobbyPlayerLimit), "public publish succeeds");
             string id = ad.Id;
             var row = await backend.Get(id);
-            Check(row.Name == "Owen" && row.MaxPlayers == 3, "owner name and three-player capacity");
+            Check(row.Name == "Owen" && row.MaxPlayers == 4, "owner name and four-player capacity");
             Check(LobbyAdvertisement.IsJoinable(row, version), "waiting row joinable");
             Check(!LobbyAdvertisement.IsJoinable(row, "different-build"), "incompatible builds excluded");
             Check(await ad.Update("Owen", code, version, 2), "network count increases");
             Check(LobbyAdvertisement.Connected(await backend.Get(id)) == 2, "two actual connected players displayed");
-            Check(await ad.Update("Renamed", code, version, 3), "rename and full update");
+            Check(await ad.Update("Renamed", code, version, 4), "rename and full update");
             row = await backend.Get(id);
-            Check(row.Name == "Renamed" && LobbyAdvertisement.Connected(row) == 3, "owner rename and 3/3 displayed");
-            Check(row.AvailableSlots == 2 && !LobbyAdvertisement.IsJoinable(row, version), "full state uses network roster, not directory membership");
+            Check(row.Name == "Renamed" && LobbyAdvertisement.Connected(row) == 4, "owner rename and 4/4 displayed");
+            Check(row.AvailableSlots == 3 && !LobbyAdvertisement.IsJoinable(row, version), "full state uses network roster, not directory membership");
             Check(await ad.Update("Renamed", code, version, 2), "disconnect updates count");
             Check(LobbyAdvertisement.IsJoinable(await backend.Get(id), version), "freed slot becomes joinable");
             await ad.Pulse();
@@ -93,7 +95,7 @@ public static class LobbyBrowserChecks
             Check(backend.Calls.Count == calls, "no heartbeat resurrects a started listing");
             Check(!await ad.Update("Late", code, version, 1), "late count update cannot recreate listing");
 
-            await ad.Publish(true, "Retry", code, version, 1, 3);
+            await ad.Publish(true, "Retry", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
             backend.FailUpdate = true;
             Check(!await ad.HideForStart(), "service failure blocks start hook cleanly");
             Check(ad.IsListed, "failed hide retains intact host listing for retry");
@@ -101,7 +103,7 @@ public static class LobbyBrowserChecks
             Check(await ad.HideForStart(), "hide can be retried");
 
             backend.CreateGate = new TaskCompletionSource<bool>();
-            var creating = ad.Publish(true, "Cancelled", code, version, 1, 3);
+            var creating = ad.Publish(true, "Cancelled", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
             var stopping = ad.Stop();
             backend.CreateGate.SetResult(true);
             Check(!await creating, "leave invalidates in-flight creation");
@@ -109,7 +111,7 @@ public static class LobbyBrowserChecks
             Check(backend.Lobbies.Count == 0 && !ad.IsListed, "late creation leaves no orphan listing");
             backend.CreateGate = null;
 
-            await ad.Publish(true, "Update race", code, version, 1, 3);
+            await ad.Publish(true, "Update race", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
             backend.UpdateGate = new TaskCompletionSource<bool>();
             var updating = ad.Update("Update race", code, version, 2);
             stopping = ad.Stop();
@@ -119,21 +121,21 @@ public static class LobbyBrowserChecks
             Check(backend.Lobbies.Count == 0 && !ad.IsListed, "leave wins over in-flight count update");
             backend.UpdateGate = null;
 
-            await ad.Publish(true, "Delete retry", code, version, 1, 3);
+            await ad.Publish(true, "Delete retry", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
             backend.FailDelete = true;
             await ad.Stop();
             Check(backend.Lobbies.Count == 0, "failed cleanup is retried");
 
-            await ad.Publish(true, "Private next", code, version, 1, 3);
-            await ad.Publish(false, "Private next", code, version, 1, 3);
+            await ad.Publish(true, "Private next", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
+            await ad.Publish(false, "Private next", code, version, 1, RelayPartyManager.LobbyPlayerLimit);
             Check(backend.Lobbies.Count == 0 && !ad.IsListed, "public-to-private rehost removes old listing");
-            var bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 3, data: LobbyAdvertisement.Data("", version, 1));
+            var bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 4, data: LobbyAdvertisement.Data("", version, 1));
             Check(!LobbyAdvertisement.IsJoinable(bad, version), "missing relay code rejected");
-            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 3, data: LobbyAdvertisement.Data(code, version, 4));
+            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 4, data: LobbyAdvertisement.Data(code, version, 5));
             Check(!LobbyAdvertisement.IsWaiting(bad, version), "malformed count excluded");
-            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 3, data: LobbyAdvertisement.Data(code, version, 1, "started"));
+            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 4, data: LobbyAdvertisement.Data(code, version, 1, "started"));
             Check(!LobbyAdvertisement.IsWaiting(bad, version), "started state excluded even from cached rows");
-            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 3, isPrivate: true, data: LobbyAdvertisement.Data(code, version, 1));
+            bad = new Lobby(id: "bad", name: "Bad", maxPlayers: 4, isPrivate: true, data: LobbyAdvertisement.Data(code, version, 1));
             Check(!LobbyAdvertisement.IsJoinable(bad, version), "private listing rejected even if cached");
             var options = LobbyAdvertisement.QueryOptions(version);
             Check(options.Count == 20 && options.Filters.Count == 4, "small query filters directory, build, waiting state and lock");
@@ -155,7 +157,7 @@ public static class LobbyBrowserChecks
             Directory.CreateDirectory("Logs/LobbyBrowserTestBuild");
             var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
             {
-                scenes = new[] { "Assets/Scenes/MainMenu.unity", "Assets/Scenes/Night1_MultiplayerTest.unity", "Assets/Scenes/Night 2.unity" },
+                scenes = EditorBuildSettings.scenes.Where(scene => scene.enabled).Select(scene => scene.path).ToArray(),
                 locationPathName = "Logs/LobbyBrowserTestBuild/RedSandBrowserTest.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.Development

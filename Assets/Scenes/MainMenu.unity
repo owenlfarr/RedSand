@@ -3649,7 +3649,7 @@ MonoBehaviour:
   menuSceneName: MainMenu
   multiplayerSceneName: Night1_MultiplayerTest
   playtestStartNightThree: 1
-  maxConnections: 3
+  maxConnections: 4
   relayConnectionType: dtls
   createLobbyButton: {fileID: 1552854405}
   joinLobbyButton: {fileID: 1177379428}
@@ -6182,7 +6182,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 1-3 PLAYERS   /   COOPERATIVE SURVIVAL HORROR
+  m_text: 1-4 PLAYERS   /   COOPERATIVE SURVIVAL HORROR
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: c219dea13374aa2438c267becf5ffb6a, type: 2}
   m_sharedMaterial: {fileID: 6949969452931664841, guid: c219dea13374aa2438c267becf5ffb6a, type: 2}

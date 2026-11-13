@@ -59,11 +59,13 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
     }
     IEnumerator Run()
     {
-        yield return Wait(()=>NetworkManager.ConnectedClientsIds.Count==3,30f,"host plus two real clients connected");
+        yield return Wait(()=>NetworkManager.ConnectedClientsIds.Count==4,30f,"host plus three real clients connected");
         yield return new WaitForSecondsRealtime(1f);
-        ulong remote=NetworkManager.ConnectedClientsIds.First(id=>id!=0), other=NetworkManager.ConnectedClientsIds.Last(id=>id!=0);
+        ulong remote=NetworkManager.ConnectedClientsIds.Max(), other=NetworkManager.ConnectedClientsIds.Where(id=>id!=0).OrderBy(id=>id).Skip(1).First();
         File.WriteAllText("Logs/Revive-"+run+"-remote.txt",remote.ToString());
         File.WriteAllText("Logs/Revive-"+run+"-other.txt",other.ToString());
+        foreach (ulong id in NetworkManager.ConnectedClientsIds) MoveClientRpc(id, new Vector3(40 + id * 3,1.6f,0));
+        yield return new WaitForSecondsRealtime(0.6f);
         yield return Place(0,true);
         yield return Place(other,true);
         GivePlasma(1);
@@ -77,6 +79,17 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
         yield return VerifyAll("selected teammate replicated",false,1);
         CommandClientRpc(0,"cycle");yield return new WaitForSecondsRealtime(0.3f);
         Check(Session.Current.Target==remote,"Q wraps to first fallen teammate");
+        ulong extra = NetworkManager.ConnectedClientsIds.First(id => id != 0 && id != remote && id != other);
+        Kill(extra, false);
+        CommandClientRpc(0,"cycle"); yield return new WaitForSecondsRealtime(0.3f);
+        Check(Session.Current.Target == extra, "Q reaches third fallen teammate in four-player party");
+        CommandClientRpc(0,"cycle"); yield return new WaitForSecondsRealtime(0.3f);
+        Check(Session.Current.Target == other, "Q cycles all three fallen teammates");
+        CommandClientRpc(0,"cycle"); yield return new WaitForSecondsRealtime(0.3f);
+        Check(Session.Current.Target == remote, "Q wraps to fourth player");
+        var oldExtra = NetworkManager.ConnectedClients[extra].PlayerObject; oldExtra.Despawn(true);
+        Instantiate(NetworkManager.NetworkConfig.PlayerPrefab, new Vector3(30,1.6f,0), Quaternion.identity).GetComponent<NetworkObject>().SpawnAsPlayerObject(extra,true);
+        yield return new WaitForSecondsRealtime(0.5f);
         CommandClientRpc(0,"stale");yield return new WaitForSecondsRealtime(0.2f);
         Check(!Session.Current.Active&&Drill.Current.Plasma==1,"stale target selection cannot spend plasma on another teammate");
         var oldOther=NetworkManager.ConnectedClients[other].PlayerObject;oldOther.Despawn(true);
@@ -119,6 +132,7 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
         Check(FindFirstObjectByType<RadarSystem>().IsOnCooldownNetwork.Value,"actual radar activation accepted during countdown");
         Check(FindFirstObjectByType<DefenseSystem>().IsOnCooldownNetwork.Value,"actual defense activation accepted during countdown");
         Check(Session.Current.Active && Session.Current.EndsAt==deadline,"radar and defense leave countdown unchanged");
+        yield return VerifyAll("radar and defense on all four peers",true,0);
         CommandClientRpc(other,"activate");
         Check(Drill.Current.Plasma==0,"repeated requests do not double charge");
         yield return Wait(()=>Alive(remote),20f,"remote revived after uninterrupted countdown");
@@ -138,7 +152,7 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
         // Force the progression roster to treat the host as eliminated; revival must update it.
         var progression=NetworkManager.GetComponent<NetworkLevelProgression>();
         var roster=(HashSet<ulong>)typeof(NetworkLevelProgression).GetField("survivors",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(progression);
-        roster.Add(remote);roster.Add(other);
+        foreach (ulong id in NetworkManager.ConnectedClientsIds) if (id != 0) roster.Add(id);
         typeof(NetworkLevelProgression).GetField("hasRoster",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(progression,true);
         CommandClientRpc(remote,"activate");
         yield return Wait(()=>Session.Current.Active,3f,"remote teammate starts host revival");
@@ -181,7 +195,7 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
         Check(Drill.Current.Plasma==0,"refund case reserves plasma");
         yield return new WaitForSecondsRealtime(0.8f);
         DisconnectClientRpc(new ClientRpcParams {Send=new ClientRpcSendParams {TargetClientIds=new[]{other}}});
-        yield return Wait(()=>NetworkManager.ConnectedClientsIds.Count==2 && !Session.Current.Active,5f,"departed target clears impossible revival");
+        yield return Wait(()=>NetworkManager.ConnectedClientsIds.Count==3 && !Session.Current.Active,5f,"departed target clears impossible revival");
         Check(Drill.Current.Plasma==1,"departed target refunds plasma once");
         yield return VerifyAll("refund replicated and no stuck job",false,1);
         ulong remaining = NetworkManager.ConnectedClientsIds.First(id => id != 0);
@@ -253,6 +267,11 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
         yield return new WaitForSecondsRealtime(0.25f);
         Check(Station.State.Value.Active==active,"station state: "+label); Check(Drill.Current.Plasma==plasma,"shared plasma: "+label);
         Check(Station.State.Value.Target==selected,"selected teammate: "+label);
+        if (label == "radar and defense on all four peers")
+        {
+            Check(FindFirstObjectByType<RadarSystem>().IsOnCooldownNetwork.Value, "fourth receives radar state");
+            Check(FindFirstObjectByType<DefenseSystem>().IsOnCooldownNetwork.Value, "fourth receives defense state");
+        }
         Check(Station.display.text.Contains(active?"REVIVING":"REVIVE"),"wall display: "+label);
         Check(NetworkManager.LocalClient.PlayerObject!=null,"local player exists: "+label);
         if(!active && NetworkManager.LocalClient.PlayerObject!=null && !NetworkManager.LocalClient.PlayerObject.GetComponent<NetworkOxygenState>().IsDead.Value)
@@ -276,7 +295,7 @@ public sealed class ReviveNetworkTest : NetworkBehaviour
     [ClientRpc] void FinishClientRpc()
     {
         if(IsServer)return;
-        Check(mutedFrames>100 || role=="client2","target experienced sustained silent countdown");
+        Check(mutedFrames>100 || NetworkManager.LocalClientId != ulong.Parse(File.ReadAllText("Logs/Revive-"+run+"-remote.txt")),"target experienced sustained silent countdown");
         File.WriteAllText("Logs/Revive-"+run+"-"+role+"-PASS.txt",assertions+" assertions; muted frames="+mutedFrames);Application.Quit(0);
     }
     static object Call(object target,string method,params object[] args)=>target.GetType().GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(target,args);

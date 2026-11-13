@@ -70,7 +70,7 @@ namespace Networking
             bool host = connected && network.IsHost && !owner.MatchStarted && menu;
             hostStatusObject.SetActive(host);
             if (host)
-                hostStatus.text = (IsPubliclyListed ? "PUBLIC LOBBY" : "PRIVATE / INVITE CODE") + "   " + network.ConnectedClientsIds.Count + "/3" +
+                hostStatus.text = (IsPubliclyListed ? "PUBLIC LOBBY" : "PRIVATE / INVITE CODE") + "   " + network.ConnectedClientsIds.Count + "/" + RelayPartyManager.LobbyPlayerLimit +
                     (string.IsNullOrEmpty(warning) ? "" : "\n" + warning);
             if (!host && requestedPublic && !publishing)
             {
@@ -101,7 +101,7 @@ namespace Networking
                 var network = NetworkManager.Singleton;
                 lastCount = network != null ? network.ConnectedClientsIds.Count : 1;
                 lastName = displayName;
-                bool published = await advertisement.Publish(isPublic, displayName, code, Compatibility, Mathf.Max(1, lastCount), 3);
+                bool published = await advertisement.Publish(isPublic, displayName, code, Compatibility, Mathf.Max(1, lastCount), RelayPartyManager.LobbyPlayerLimit);
                 if (!published && requestedPublic) warning = "Public listing unavailable. Invite code still works.";
                 nextHeartbeat = Time.unscaledTime + 12f;
                 nextHostUpdate = Time.unscaledTime + 2f;

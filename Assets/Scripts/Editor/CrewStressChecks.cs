@@ -115,7 +115,7 @@ public static class CrewStressChecks
             }
             string worstName = new string('\u754c', 24);
             string row = worstName + "  <color=#FF5555>STRESSED 3/3</color>";
-            var snapshot = new FixedString512Bytes(row + "\n\n" + row + "\n\n" + row);
+            var snapshot = new FixedString512Bytes(string.Join("\n\n", System.Linq.Enumerable.Repeat(row, Networking.RelayPartyManager.LobbyPlayerLimit)));
             if (snapshot.Length > snapshot.Capacity) throw new Exception("Stress snapshot exceeds capacity");
             assertions++;
             foreach (var path in new[] { "Assets/Scenes/Night1_MultiplayerTest.unity", "Assets/Scenes/Night 2.unity" })

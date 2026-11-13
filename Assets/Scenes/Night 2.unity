@@ -46724,6 +46724,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1736945546}
   - component: {fileID: 600000000001}
+  - component: {fileID: 600000000099}
   m_Layer: 0
   m_Name: NetworkStartPosition_1
   m_TagString: Untagged
@@ -70542,3 +70543,15 @@ SceneRoots:
   - {fileID: 578987863}
   - {fileID: 1341866028}
   - {fileID: 2029309709}
+--- !u!114 &600000000099
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1736945545}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7f1f0a3d7f2041cc8d8f7f9b6a0d4f31, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:

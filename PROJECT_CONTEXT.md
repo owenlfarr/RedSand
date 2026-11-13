@@ -1,5 +1,11 @@
 # RedSand project context
 
+## Four-player crews (2026-11-10)
+
+- Four total players, shared lobby cap/counters, runtime fourth menu astronaut/name, and 1?4 subtitle. Registered the existing first spawn marker in all five campaign scenes; preserved geometry and network identities. Stress display includes four outside crew, retaining its severity scale and 512-byte snapshot.
+- Existing revive/radar/defense/PA/voice/spectator/progression implementations retained and verified. Real Lobby/Relay five-process campaign run `four-head-225536` passed 164 assertions; four-peer revive passed 282; four-peer nine-case death run passed 164. All production-scene development and normal Windows release builds: zero errors. Menu preview visually inspected.
+- Playable build: `Logs/FourPlayerRelease/Red Sand.exe` (share the complete folder). Evidence/source hashes: `Logs/FourPlayerVerification.json`; details/repro and manual mic/balance limits: `Assets/_Project/FourPlayers.md`.
+
 ## Yeller rock bug (2026-11-09)
 
 - Added eight small orange Yeller cube placeholders beside painted rocks in Night 5. Server-validated 1.524 m attachment range, clear line of sight, single immutable 15-second scream deadline, shoulder-following visual, positional audio and spent-once lifecycle. Duplicate bugs cannot stack on one victim; independent concurrent screams select the nearest active victim per monster. Death/disconnect/despawn stops the effect.
